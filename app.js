@@ -9,13 +9,18 @@ const gatePass = document.getElementById("gate-pass");
 const gateBtn = document.getElementById("gate-btn");
 const gateErr = document.getElementById("gate-err");
 
-function unlockIfSession() {
-  const ok = sessionStorage.getItem("pi_access_ok") === "1";
-  gate.classList.toggle("hidden", ok);
-  return ok;
+function normalizePass(s) {
+  return s
+    .trim()                 // rimuove spazi invisibili
+    .replace(/\s+/g, "")    // rimuove whitespace strani
+    .normalize("NFKC");     // normalizza Unicode (IMPORTANTISSIMO)
 }
+
 function tryUnlock() {
-  if (gatePass.value === ACCESS_PASS) {
+  const input = normalizePass(gatePass.value);
+  const target = normalizePass(ACCESS_PASS);
+
+  if (input === target) {
     sessionStorage.setItem("pi_access_ok", "1");
     gate.classList.add("hidden");
     gateErr.textContent = "";
@@ -23,6 +28,7 @@ function tryUnlock() {
     gateErr.textContent = "Wrong password.";
   }
 }
+
 gateBtn.addEventListener("click", tryUnlock);
 gatePass.addEventListener("keydown", (e) => { if (e.key === "Enter") tryUnlock(); });
 unlockIfSession();
