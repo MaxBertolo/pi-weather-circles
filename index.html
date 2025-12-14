@@ -7,20 +7,70 @@
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
-  <div id="ui">
-    <div class="row">
-      <button id="btn-geo">Use my location</button>
-      <button id="btn-audio">Enable audio</button>
-      <label class="toggle">
-        <input type="checkbox" id="toggle-night" />
-        <span>Night mode (permanent)</span>
-      </label>
-    </div>
 
-    <div class="row small" id="status">
-      Loading weather…
+  <!-- Password Gate -->
+  <div id="gate" class="gate">
+    <div class="gate-card">
+      <div class="gate-title">Access</div>
+      <div class="gate-sub">Enter password to view the artwork</div>
+      <input id="gate-pass" class="gate-input" type="password" placeholder="Password" autocomplete="current-password" />
+      <button id="gate-btn" class="gate-btn">Enter</button>
+      <div id="gate-err" class="gate-err"></div>
     </div>
   </div>
+
+  <!-- Weather Panel (hidden by default) -->
+  <div id="panel" class="panel hidden">
+    <div class="panel-row">
+      <div id="panel-time" class="panel-time">--:--</div>
+
+      <button id="btn-audio" class="panel-btn">Enable audio</button>
+
+      <button id="btn-geo" class="panel-btn">Use my location</button>
+
+      <label class="panel-toggle">
+        <input type="checkbox" id="toggle-night" />
+        <span>Night (permanent)</span>
+      </label>
+
+      <button id="btn-details" class="panel-btn">Details</button>
+    </div>
+
+    <!-- icon line like “allegato” (compact) -->
+    <div class="panel-icons">
+      <div class="i" title="Temperature">🌡️ <span id="v-temp">--</span></div>
+      <div class="i" title="Wind">🌬️ <span id="v-wind">--</span></div>
+      <div class="i" title="Clouds">☁️ <span id="v-cloud">--</span></div>
+      <div class="i" title="Rain">🌧️ <span id="v-rain">--</span></div>
+      <div class="i" title="Fog">🌫️ <span id="v-fog">--</span></div>
+      <div class="i" title="Day/Night"><span id="v-dayicon">☀️</span></div>
+    </div>
+
+    <!-- Details (hidden by default) -->
+    <div id="panel-details" class="panel-details hidden">
+      <div id="status" class="status">Loading weather…</div>
+
+      <div class="alarm">
+        <div class="alarm-title">⏰ Alarm</div>
+        <div class="alarm-row">
+          <input id="alarm-time" class="alarm-time" type="time" />
+          <select id="alarm-sound" class="alarm-sound">
+            <option value="siren">Siren</option>
+            <option value="trumpet">Trumpet (alzabandiera)</option>
+          </select>
+          <button id="alarm-set" class="panel-btn">Set</button>
+          <button id="alarm-cancel" class="panel-btn">Cancel</button>
+          <button id="alarm-stop" class="panel-btn danger hidden">Stop</button>
+        </div>
+        <div id="alarm-info" class="alarm-info"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Active filled circle button -->
+  <button id="toggle-btn" class="toggle-btn" aria-label="Toggle weather panel" title="Toggle panel">
+    ●
+  </button>
 
   <canvas id="c"></canvas>
 
