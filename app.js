@@ -1,25 +1,29 @@
-// π Weather Circles — Password gate + icon HUD + details panel + season/day chords + alarm vibration
+// π Weather Circles — Robust build (visible circles + stable audio + safe loop)
 
 const PI = Math.PI;
 
 // ----- Password gate (client-side) -----
 const ACCESS_PASS = "MAX72!";
+
 const gate = document.getElementById("gate");
 const gatePass = document.getElementById("gate-pass");
 const gateBtn = document.getElementById("gate-btn");
 const gateErr = document.getElementById("gate-err");
 
 function normalizePass(s) {
-  return s
-    .trim()                 // rimuove spazi invisibili
-    .replace(/\s+/g, "")    // rimuove whitespace strani
-    .normalize("NFKC");     // normalizza Unicode (IMPORTANTISSIMO)
+  return (s ?? "")
+    .trim()
+    .replace(/\s+/g, "")
+    .normalize("NFKC");
 }
-
+function unlockIfSession() {
+  const ok = sessionStorage.getItem("pi_access_ok") === "1";
+  gate.classList.toggle("hidden", ok);
+  return ok;
+}
 function tryUnlock() {
   const input = normalizePass(gatePass.value);
   const target = normalizePass(ACCESS_PASS);
-
   if (input === target) {
     sessionStorage.setItem("pi_access_ok", "1");
     gate.classList.add("hidden");
@@ -28,9 +32,8 @@ function tryUnlock() {
     gateErr.textContent = "Wrong password.";
   }
 }
-
-gateBtn.addEventListener("click", tryUnlock);
-gatePass.addEventListener("keydown", (e) => { if (e.key === "Enter") tryUnlock(); });
+gateBtn?.addEventListener("click", tryUnlock);
+gatePass?.addEventListener("keydown", (e) => { if (e.key === "Enter") tryUnlock(); });
 unlockIfSession();
 
 // ----- DOM -----
@@ -59,7 +62,7 @@ const alarmTest = document.getElementById("alarm-test");
 const alarmStop = document.getElementById("alarm-stop");
 
 // Toggle details panel via full circle
-btnInfo.addEventListener("click", () => {
+btnInfo?.addEventListener("click", () => {
   const show = panel.classList.contains("hidden");
   panel.classList.toggle("hidden", !show);
   btnInfo.classList.toggle("active", show);
@@ -76,6 +79,9 @@ function resize() {
   canvas.style.width = W + "px";
   canvas.style.height = H + "px";
   ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+
+  // IMPORTANT: re-init circles when size changes
+  initCircles();
 }
 window.addEventListener("resize", resize);
 resize();
@@ -84,6 +90,7 @@ resize();
 const clamp = (x, a, b) => Math.max(a, Math.min(b, x));
 const lerp = (a, b, t) => a + (b - a) * t;
 function tempNorm(tC) { return clamp((tC - (-15)) / (50 - (-15)), 0, 1); } // [-15..50] -> [0..1]
+function pad2(n){ return String(n).padStart(2,"0"); }
 
 // ----- Location -----
 const defaultLoc = { lat: 41.9028, lon: 12.4964, label: "Rome (fallback)" };
@@ -91,9 +98,7 @@ const loc = { ...defaultLoc };
 
 try {
   const saved = JSON.parse(localStorage.getItem("pi_weather_loc") || "null");
-  if (saved && typeof saved.lat === "number" && typeof saved.lon === "number") {
-    Object.assign(loc, saved);
-  }
+  if (saved && typeof saved.lat === "number" && typeof saved.lon === "number") Object.assign(loc, saved);
 } catch {}
 
 function useGeolocation() {
@@ -110,7 +115,7 @@ function useGeolocation() {
     { enableHighAccuracy: false, timeout: 8000, maximumAge: 10 * 60 * 1000 }
   );
 }
-btnGeo.addEventListener("click", useGeolocation);
+btnGeo?.addEventListener("click", useGeolocation);
 
 // ----- Weather -----
 const weather = {
@@ -152,7 +157,9 @@ async function fetchWeather() {
 
   weather.tempC = cur.temperature_2m;
   weather.isDay = !!cur.is_day;
-  weather.windMs = (cur.wind_speed_10m != null) ? (cur.wind_speed_10m / 3.6) : 1; // km/h -> m/s
+
+  // Open-Meteo wind_speed_10m default is km/h → convert to m/s
+  weather.windMs = (cur.wind_speed_10m != null) ? (cur.wind_speed_10m / 3.6) : 1;
   weather.windDirDeg = cur.wind_direction_10m || 0;
 
   const cc = hourly?.cloud_cover?.[idx];
@@ -171,16 +178,19 @@ async function fetchWeather() {
 }
 
 function scheduleWeather() {
-  fetchWeather().catch(()=>{}).finally(() => {
-    setTimeout(scheduleWeather, 10 * 60 * 1000);
-  });
+  fetchWeather().catch((e)=> {
+    // show small error only in panel (if open)
+    if (panelLines) {
+      panelLines.innerHTML = `<div><b>Weather error:</b> ${String(e.message || e)}</div>`;
+    }
+  }).finally(() => setTimeout(scheduleWeather, 10 * 60 * 1000));
 }
 scheduleWeather();
-// optional auto-try (shows prompt depending on browser settings)
-useGeolocation();
+useGeolocation(); // best effort
 
-// ----- HUD time + icons values -----
-function pad2(n){ return String(n).padStart(2,"0"); }
+// ----- HUD + Panel -----
+function isDayEffective() { return toggleNight?.checked ? false : weather.isDay; }
+
 function updateHud() {
   const now = new Date();
   hudTime.textContent = `${pad2(now.getHours())}:${pad2(now.getMinutes())}`;
@@ -191,12 +201,12 @@ function updateHud() {
   hudWind.textContent  = `${weather.windMs.toFixed(1)}`;
   hudFog.textContent   = `${Math.round(weather.fog * 100)}%`;
 }
-setInterval(updateHud, 1000 * 10);
+setInterval(updateHud, 10_000);
 
 function updatePanel() {
+  if (!panelLines) return;
   const s = getSeasonKey();
   const day = isDayEffective() ? "Day" : "Night";
-
   panelLines.innerHTML = `
     <div><b>Location:</b> ${loc.label} (${loc.lat.toFixed(3)}, ${loc.lon.toFixed(3)})</div>
     <div><b>Local time:</b> ${new Date().toLocaleString("it-IT")}</div>
@@ -206,6 +216,7 @@ function updatePanel() {
     <div><b>Wind:</b> ${weather.windMs.toFixed(1)} m/s @ ${Math.round(weather.windDirDeg)}°</div>
     <div><b>Fog (proxy):</b> ${(weather.fog*100).toFixed(0)} %</div>
     <div><b>Harmony mode:</b> ${s} / ${day}</div>
+    <div><b>Audio status:</b> ${audioCtx ? audioCtx.state : "off"}</div>
   `;
 }
 
@@ -218,8 +229,7 @@ function getSeasonKey(date = new Date()) {
   return "autumn";
 }
 function seasonSeed(seasonKey) {
-  const base = { winter: 314159, spring: 265358, summer: 979323, autumn: 846264 }[seasonKey] || 314159;
-  return base;
+  return ({ winter: 314159, spring: 265358, summer: 979323, autumn: 846264 }[seasonKey] || 314159);
 }
 function mulberry32(seed) {
   let a = seed >>> 0;
@@ -231,64 +241,66 @@ function mulberry32(seed) {
   };
 }
 
-// ----- Visual system (99 circles, stroke 1mm, π dynamics) -----
+// ----- Visual system -----
 const N = 99;
 let circles = [];
 let rng = mulberry32(seasonSeed(getSeasonKey()));
 let currentSeason = getSeasonKey();
 
+// make circles clearly visible:
+const STROKE_PX = 2; // more visible than 1
+const MIN_ALPHA = 0.62;
+const MAX_ALPHA = 0.96;
+
 function initCircles() {
-  circles = [];
+  if (W <= 0 || H <= 0) return;
+
   currentSeason = getSeasonKey();
   rng = mulberry32(seasonSeed(currentSeason));
 
+  circles = [];
   for (let i = 0; i < N; i++) {
-    const r = lerp(6, 22, Math.pow(rng(), 1.7));
-    const x = rng() * W;
-    const y = rng() * H;
+    const r = lerp(6, 22, Math.pow(rng(), 1.6));
     circles.push({
       id: i,
-      x, y,
+      x: rng() * W,
+      y: rng() * H,
       r,
       baseR: r,
       phase: (i + 1) * PI * (1 + (rng() - 0.5) * 0.12),
       rot: rng() * 2 * PI,
       spin: lerp(-0.9, 0.9, rng()),
       hueOffset: Math.floor(rng() * 360),
-      alpha: lerp(0.35, 0.85, rng()),
+      alpha: lerp(MIN_ALPHA, MAX_ALPHA, rng()),
       trail: []
     });
   }
 }
-initCircles();
 
 // background: blue/grey; grey more with fog; brightness with day
-function isDayEffective() {
-  return toggleNight.checked ? false : weather.isDay;
-}
 function computeBackground() {
   const day = isDayEffective() ? 1 : 0;
   const clouds = clamp(weather.cloudCover / 100, 0, 1);
   const fog = clamp(weather.fog, 0, 1);
 
   const blueT = day * (1 - 0.65 * clouds);
-  const greyT = clamp(0.15 + 0.60 * fog + 0.30 * clouds + (1 - day) * 0.30, 0, 1);
+  const greyT = clamp(0.12 + 0.62 * fog + 0.30 * clouds + (1 - day) * 0.34, 0, 1);
 
-  const r = Math.floor(lerp(10, 85, greyT));
-  const g = Math.floor(lerp(16, 95, greyT));
-  const b = Math.floor(lerp(32, 155, greyT + blueT * 0.45));
+  const r = Math.floor(lerp(8, 92, greyT));
+  const g = Math.floor(lerp(12, 102, greyT));
+  const b = Math.floor(lerp(26, 165, greyT + blueT * 0.50));
   return `rgb(${r},${g},${b})`;
 }
 
 // circle stroke color: warm when hot, cool when cold (+ unique hue offsets)
 function circleStrokeColor(c) {
   const t = tempNorm(weather.tempC);
-  const baseHue = lerp(220, 25, t); // cold->blue, hot->orange
+  const baseHue = lerp(220, 25, t);
   const hue = (baseHue + c.hueOffset) % 360;
 
   const season = getSeasonKey();
-  const sat = (season === "summer") ? 70 : (season === "winter") ? 55 : 62;
-  const light = isDayEffective() ? lerp(52, 68, t) : lerp(38, 54, t);
+  const sat = (season === "summer") ? 75 : (season === "winter") ? 60 : 68;
+  const light = isDayEffective() ? lerp(54, 70, t) : lerp(40, 58, t);
 
   return `hsla(${hue.toFixed(0)}, ${sat}%, ${light.toFixed(0)}%, ${c.alpha.toFixed(2)})`;
 }
@@ -297,9 +309,8 @@ function circleStrokeColor(c) {
 let alarmRinging = false;
 let alarmEndsAt = 0;
 
-// motion model: sun slow circular/top, rain vertical, wind oblique. Alarm -> jitter.
+// motion model
 function step(dt, nowMs) {
-  // season change -> re-seed
   const s = getSeasonKey();
   if (s !== currentSeason) initCircles();
 
@@ -311,29 +322,28 @@ function step(dt, nowMs) {
   const windN = clamp(wind / 12, 0, 1);
 
   const baseSpeed = lerp(10, 55, tN);
-
   const sunMode = (day && rain < 0.2) ? 1 : 0;
 
   const windDir = (weather.windDirDeg || 0) * PI / 180;
   const wx = Math.cos(windDir) * windN;
   const wy = Math.sin(windDir) * windN;
 
-  const vibrate = alarmRinging ? (2.5 + 4.0 * rainN) : 0;
+  const vibrate = alarmRinging ? (3.0 + 4.0 * rainN) : 0;
 
   for (const c of circles) {
     c.phase += dt * (PI * 0.15 + c.id * 0.0007);
     c.rot += dt * c.spin * (0.8 + 1.2 * tN);
 
     const micro = 0.6 + 1.8 * (1 - rainN);
-    let hx = Math.sin(c.phase) * micro;
-    let hy = Math.cos(c.phase / PI) * micro;
+    const hx = Math.sin(c.phase) * micro;
+    const hy = Math.cos(c.phase / PI) * micro;
 
     if (sunMode) {
       const rad = (18 + c.baseR * 1.3) * (0.6 + 0.6 * Math.sin(c.phase / (PI*2)));
       c.x += (Math.cos(c.phase) * rad + hx) * dt;
       c.y += (Math.sin(c.phase) * rad * 0.55 + hy) * dt;
-
       c.y -= dt * 6 * (0.3 + tN);
+
       const targetY = H * 0.35;
       c.y += (targetY - c.y) * dt * 0.05;
     }
@@ -356,7 +366,7 @@ function step(dt, nowMs) {
       c.y += (hy * calm) * dt;
     }
 
-    // alarm vibration jitter (screen-space)
+    // alarm jitter
     if (vibrate > 0) {
       c.x += (Math.sin(nowMs / 37 + c.id) * vibrate) * dt * 60;
       c.y += (Math.cos(nowMs / 41 + c.id) * vibrate) * dt * 60;
@@ -368,23 +378,20 @@ function step(dt, nowMs) {
     if (c.y < -c.r) c.y = H + c.r;
     if (c.y > H + c.r) c.y = -c.r;
 
-    // trail logging
+    // trail
     const keep = 18;
     c.trail.push({ x: c.x, y: c.y });
     if (c.trail.length > keep) c.trail.shift();
   }
 
-  // stop alarm if time over
-  if (alarmRinging && nowMs >= alarmEndsAt) {
-    stopAlarm();
-  }
+  if (alarmRinging && nowMs >= alarmEndsAt) stopAlarm();
 }
 
 function draw(nowMs) {
-  ctx.fillStyle = toggleNight.checked ? "rgb(8,10,14)" : computeBackground();
+  ctx.fillStyle = toggleNight?.checked ? "rgb(8,10,14)" : computeBackground();
   ctx.fillRect(0, 0, W, H);
 
-  // minimal time bar logging
+  // time bar
   const minute = Math.floor(nowMs / 60000);
   const xBar = (minute % 120) / 120 * W;
   ctx.fillStyle = "rgba(255,255,255,0.05)";
@@ -392,22 +399,22 @@ function draw(nowMs) {
   ctx.fillStyle = "rgba(255,255,255,0.12)";
   ctx.fillRect(xBar, H - 12, Math.max(2, W * 0.01), 12);
 
-  // circles: stroke only (≈ 1mm)
-  ctx.lineWidth = 1;
+  ctx.lineWidth = STROKE_PX;
 
   for (const c of circles) {
-    // trails
     const col = circleStrokeColor(c);
+
+    // trails
     for (let i = 0; i < c.trail.length - 1; i++) {
       const a = i / c.trail.length;
-      ctx.strokeStyle = col.replace(/[\d.]+\)$/, `${(0.08 * a).toFixed(3)})`);
+      ctx.strokeStyle = col.replace(/[\d.]+\)$/, `${(0.10 * a).toFixed(3)})`);
       ctx.beginPath();
       ctx.moveTo(c.trail[i].x, c.trail[i].y);
       ctx.lineTo(c.trail[i+1].x, c.trail[i+1].y);
       ctx.stroke();
     }
 
-    // stroke circle (no fill)
+    // circle stroke
     ctx.save();
     ctx.translate(c.x, c.y);
     ctx.rotate(c.rot);
@@ -417,8 +424,8 @@ function draw(nowMs) {
     ctx.arc(0, 0, c.r * (1 + 0.05 * Math.sin(c.phase / PI)), 0, 2 * PI);
     ctx.stroke();
 
-    // tiny radial marker to show rotation
-    ctx.strokeStyle = "rgba(255,255,255,0.08)";
+    // marker
+    ctx.strokeStyle = "rgba(255,255,255,0.10)";
     ctx.beginPath();
     ctx.moveTo(0, 0);
     ctx.lineTo(c.r, 0);
@@ -435,17 +442,12 @@ let chordOscs = [];
 let chordGains = [];
 let lfo = null;
 let lfoGain = null;
-
-let nextHitAt = 0; // scheduler
-let alarmNode = null; // alarm sound handle
-
-function ensureAudio() {
-  if (audioCtx) return true;
-  return false;
-}
+let nextHitAt = 0;
+let alarmNode = null;
 
 function startAudio() {
   if (audioCtx) return;
+
   audioCtx = new (window.AudioContext || window.webkitAudioContext)();
 
   master = audioCtx.createGain();
@@ -465,30 +467,42 @@ function startAudio() {
     chordGains.push(g);
   }
 
-  // subtle LFO for movement
+  // subtle LFO
   lfo = audioCtx.createOscillator();
   lfo.type = "sine";
   lfo.frequency.value = 0.35;
   lfoGain = audioCtx.createGain();
-  lfoGain.gain.value = 12; // mod depth in Hz
+  lfoGain.gain.value = 12; // Hz depth
   lfo.connect(lfoGain);
-  // apply LFO to first oscillator frequency
   lfoGain.connect(chordOscs[0].frequency);
   lfo.start();
 
   btnAudio.textContent = "Audio enabled";
+  updatePanel();
 }
 
-btnAudio.addEventListener("click", () => {
+async function resumeAudioIfNeeded() {
+  if (!audioCtx) return;
+  if (audioCtx.state === "suspended") {
+    try { await audioCtx.resume(); } catch {}
+  }
+}
+
+btnAudio?.addEventListener("click", async () => {
   startAudio();
+  await resumeAudioIfNeeded();
 });
 
-// Chord tables (intervals in semitones)
+// If user clicks anywhere, and audio was already created, try resume (fix “enabled but silent”)
+document.addEventListener("pointerdown", () => {
+  resumeAudioIfNeeded();
+}, { passive: true });
+
 const CHORDS = {
-  winter: { day: [0, 3, 7], night: [0, 2, 7] },   // minor, sus2 feel at night
-  spring: { day: [0, 4, 7], night: [0, 3, 7] },   // major -> minor
-  summer: { day: [0, 4, 7], night: [0, 5, 9] },   // major -> add6-ish (airy)
-  autumn: { day: [0, 3, 7], night: [0, 3, 10] }   // minor -> minor7
+  winter: { day: [0, 3, 7], night: [0, 2, 7] },
+  spring: { day: [0, 4, 7], night: [0, 3, 7] },
+  summer: { day: [0, 4, 7], night: [0, 5, 9] },
+  autumn: { day: [0, 3, 7], night: [0, 3, 10] }
 };
 
 function setChordFrequencies(baseHz, intervals) {
@@ -502,7 +516,6 @@ function setChordFrequencies(baseHz, intervals) {
 
 function hitChord(velocity = 0.03) {
   const t = audioCtx.currentTime;
-  // envelope (not monotone): quick attack, medium decay
   for (const g of chordGains) {
     g.gain.cancelScheduledValues(t);
     g.gain.setValueAtTime(0.0001, t);
@@ -522,34 +535,28 @@ function updateHarmony(nowMs) {
   const rainN = clamp(weather.rainMm / 10, 0, 1);
   const windN = clamp(weather.windMs / 12, 0, 1);
 
-  // base key: temperature moves the tonal center
   const baseHz = lerp(140, 520, tN);
 
-  // rhythm: faster with heat + rain; wind adds slight agitation
   const bpm = lerp(38, 110, clamp(tN + rainN * 0.55 + windN * 0.15, 0, 1));
   const intervalMs = 60000 / bpm;
 
-  // night softer
-  const velocity = (toggleNight.checked || !weather.isDay) ? 0.018 : 0.03;
-  master.gain.setTargetAtTime(clamp(velocity + rainN * 0.010, 0.012, 0.05), audioCtx.currentTime, 0.08);
+  const nightSoft = (toggleNight?.checked || !weather.isDay);
+  const velocity = nightSoft ? 0.018 : 0.03;
 
-  // LFO speed changes with weather
+  master.gain.setTargetAtTime(clamp(velocity + rainN * 0.010, 0.012, 0.05), audioCtx.currentTime, 0.08);
   lfo.frequency.setTargetAtTime(lerp(0.20, 0.90, clamp(tN + rainN * 0.4, 0, 1)), audioCtx.currentTime, 0.1);
 
   setChordFrequencies(baseHz, intervals);
 
   if (nowMs >= nextHitAt) {
     nextHitAt = nowMs + intervalMs;
-    // add tiny “melodic color”: sometimes swap to an inversion feel
     const flip = (Math.sin(nowMs / 1000) > 0.6);
-    if (flip) {
-      setChordFrequencies(baseHz * 0.5, [intervals[1], intervals[2], intervals[0] + 12]);
-    }
+    if (flip) setChordFrequencies(baseHz * 0.5, [intervals[1], intervals[2], (intervals[0] + 12)]);
     hitChord(master.gain.value);
   }
 }
 
-// ----- Alarm scheduling + sounds (siren / trumpet) -----
+// ----- Alarm -----
 let alarmTimer = null;
 
 function loadAlarmPrefs() {
@@ -570,24 +577,20 @@ function saveAlarmPrefs() {
     }));
   } catch {}
 }
-alarmEnabled.addEventListener("change", saveAlarmPrefs);
-alarmTime.addEventListener("change", saveAlarmPrefs);
-alarmSound.addEventListener("change", saveAlarmPrefs);
+alarmEnabled?.addEventListener("change", saveAlarmPrefs);
+alarmTime?.addEventListener("change", saveAlarmPrefs);
+alarmSound?.addEventListener("change", saveAlarmPrefs);
 loadAlarmPrefs();
 
 function startAlarm(durationMs = 30000) {
-  // audio must be enabled by user interaction at least once
-  if (!audioCtx) startAudio();
+  startAudio();
+  resumeAudioIfNeeded();
 
   alarmRinging = true;
   alarmEndsAt = performance.now() + durationMs;
 
-  // play alarm sound
-  if (alarmSound.value === "siren") {
-    playSiren(durationMs);
-  } else {
-    playTrumpet(durationMs);
-  }
+  if (alarmSound.value === "siren") playSiren(durationMs);
+  else playTrumpet(durationMs);
 }
 
 function stopAlarm() {
@@ -599,30 +602,28 @@ function stopAlarm() {
   }
 }
 
-alarmTest.addEventListener("click", () => startAlarm(8000));
-alarmStop.addEventListener("click", stopAlarm);
+alarmTest?.addEventListener("click", () => startAlarm(8000));
+alarmStop?.addEventListener("click", stopAlarm);
 
 function scheduleAlarmTick() {
   if (alarmTimer) clearInterval(alarmTimer);
   alarmTimer = setInterval(() => {
-    if (!alarmEnabled.checked) return;
-    if (!alarmTime.value) return;
+    if (!alarmEnabled?.checked) return;
+    if (!alarmTime?.value) return;
 
     const now = new Date();
     const [hh, mm] = alarmTime.value.split(":").map(Number);
     if (Number.isNaN(hh) || Number.isNaN(mm)) return;
 
-    // trigger when local time matches and within first 3 seconds of the minute
     if (now.getHours() === hh && now.getMinutes() === mm && now.getSeconds() < 3) {
       startAlarm(30000);
     }
   }, 1000);
 }
 scheduleAlarmTick();
-alarmEnabled.addEventListener("change", scheduleAlarmTick);
-alarmTime.addEventListener("change", scheduleAlarmTick);
+alarmEnabled?.addEventListener("change", scheduleAlarmTick);
+alarmTime?.addEventListener("change", scheduleAlarmTick);
 
-// Siren: sweeping oscillator
 function playSiren(durationMs) {
   const t0 = audioCtx.currentTime;
   const dur = durationMs / 1000;
@@ -636,7 +637,7 @@ function playSiren(durationMs) {
   g.connect(audioCtx.destination);
 
   o.frequency.setValueAtTime(520, t0);
-  // sweep up and down repeatedly using scheduled ramps
+
   const sweeps = Math.max(1, Math.floor(dur / 1.2));
   for (let i = 0; i < sweeps; i++) {
     const a = t0 + i * 1.2;
@@ -653,7 +654,6 @@ function playSiren(durationMs) {
   alarmNode = o;
 }
 
-// Trumpet-like “alzabandiera”: bright triad staccato (square + harmonics)
 function playTrumpet(durationMs) {
   const t0 = audioCtx.currentTime;
   const dur = durationMs / 1000;
@@ -662,7 +662,6 @@ function playTrumpet(durationMs) {
   g.gain.value = 0.0;
   g.connect(audioCtx.destination);
 
-  // two oscillators to mimic brass brightness
   const o1 = audioCtx.createOscillator();
   const o2 = audioCtx.createOscillator();
   o1.type = "square";
@@ -671,8 +670,7 @@ function playTrumpet(durationMs) {
   o1.connect(g);
   o2.connect(g);
 
-  // pattern (simple ceremonial motif)
-  const notes = [392, 494, 587, 784, 587, 494, 392]; // G4 B4 D5 G5 D5 B4 G4
+  const notes = [392, 494, 587, 784, 587, 494, 392]; // ceremonial-ish
   const step = 0.32;
 
   for (let i = 0; i < Math.floor(dur / step); i++) {
@@ -682,7 +680,6 @@ function playTrumpet(durationMs) {
     o1.frequency.setValueAtTime(n, tt);
     o2.frequency.setValueAtTime(n * 0.5, tt);
 
-    // staccato envelope
     g.gain.setValueAtTime(0.0001, tt);
     g.gain.exponentialRampToValueAtTime(0.14, tt + 0.02);
     g.gain.exponentialRampToValueAtTime(0.0001, tt + 0.22);
@@ -696,28 +693,35 @@ function playTrumpet(durationMs) {
   alarmNode = o1;
 }
 
-// ----- Main loop -----
+// ----- Safe main loop -----
 let last = performance.now();
 
 function loop(now) {
-  // don’t animate if locked? (optional) — keep running anyway
-  const dt = clamp((now - last) / 1000, 0, 0.05);
-  last = now;
+  try {
+    const dt = clamp((now - last) / 1000, 0, 0.05);
+    last = now;
 
-  step(dt, now);
-  draw(now);
-  updateHud();
-  if (audioCtx) updateHarmony(now);
+    step(dt, now);
+    draw(now);
+    updateHud();
+    if (audioCtx) updateHarmony(now);
+
+  } catch (e) {
+    // If something breaks, show it in panel to avoid "silent freeze"
+    if (panelLines) {
+      panelLines.innerHTML = `<div><b>Runtime error:</b> ${String(e?.message || e)}</div>`;
+    }
+  }
 
   requestAnimationFrame(loop);
 }
 requestAnimationFrame(loop);
 
-// Night toggle affects harmony + visuals immediately
-toggleNight.addEventListener("change", () => {
+toggleNight?.addEventListener("change", () => {
   updateHud();
   updatePanel();
 });
 
-// Make sure HUD stays “clean” even if panel is hidden
+// initial HUD
 updateHud();
+updatePanel();
