@@ -8,42 +8,22 @@
 </head>
 <body>
 
-  <!-- Password Gate -->
-  <div id="gate" class="gate">
-    <div class="gate-card">
-      <div class="gate-title">Access</div>
-      <div class="gate-sub">Password required</div>
-      <input
-        id="gate-pass"
-        class="gate-input"
-        type="password"
-        placeholder="MAX72!"
-        autocomplete="off"
-        autocapitalize="off"
-        autocorrect="off"
-        spellcheck="false"
-      />
-      <button id="gate-btn" class="gate-btn">Enter</button>
-      <div id="gate-err" class="gate-err"></div>
-    </div>
-  </div>
-
   <!-- HUD -->
   <div id="hud" class="hud">
     <div class="hud-row">
-      <div class="hud-item" title="Local time"><span class="ico">🕒</span><span id="hud-time" class="val">--:--</span></div>
-      <div class="hud-item" title="Temperature"><span class="ico">🌡️</span><span id="hud-temp" class="val">--</span></div>
-      <div class="hud-item" title="Clouds"><span class="ico">☁️</span><span id="hud-cloud" class="val">--</span></div>
-      <div class="hud-item" title="Rain"><span class="ico">🌧️</span><span id="hud-rain" class="val">--</span></div>
-      <div class="hud-item" title="Wind"><span class="ico">🌬️</span><span id="hud-wind" class="val">--</span></div>
-      <div class="hud-item" title="Fog"><span class="ico">🌫️</span><span id="hud-fog" class="val">--</span></div>
+      <div class="hud-item"><span class="ico">🕒</span><span id="hud-time">--:--</span></div>
+      <div class="hud-item"><span class="ico">🌡️</span><span id="hud-temp">--</span></div>
+      <div class="hud-item"><span class="ico">☁️</span><span id="hud-cloud">--</span></div>
+      <div class="hud-item"><span class="ico">🌧️</span><span id="hud-rain">--</span></div>
+      <div class="hud-item"><span class="ico">🌬️</span><span id="hud-wind">--</span></div>
+      <div class="hud-item"><span class="ico">🌫️</span><span id="hud-fog">--</span></div>
 
-      <!-- Full circle button -->
-      <button id="btn-info" class="info-dot" aria-label="Toggle info" title="Toggle info"></button>
+      <!-- full circle button -->
+      <button id="btn-info" class="info-dot" title="Info"></button>
     </div>
   </div>
 
-  <!-- Panel (hidden by default) -->
+  <!-- Panel -->
   <div id="panel" class="panel hidden">
     <div class="panel-header">
       <div class="panel-title">Controls</div>
@@ -52,11 +32,10 @@
         <button id="btn-audio" class="btn">Enable audio</button>
         <label class="toggle">
           <input type="checkbox" id="toggle-night" />
-          <span>Night mode (permanent)</span>
+          <span>Night mode</span>
         </label>
       </div>
     </div>
-
     <div id="panel-text" class="panel-text"></div>
   </div>
 
