@@ -1,7 +1,7 @@
-// π Weather Circles — Artwork + Fullscreen console via WHITE circle (no HUD)
+// π Weather Circles — Artwork + Fullscreen console via PINK filled circle (no HUD)
 // Rich music: 6-voice pad + 2-voice arpeggio, timbre muffled by fog/clouds
 // Alarm: vibrate circles + siren/trumpet
-// Background: DAY = WHITE -> GREY by clouds/fog (NO BLUE), NIGHT = dark
+// Background: DAY = WHITE (pure) -> GREY by clouds/fog, NIGHT = dark
 
 const canvas = document.getElementById("c");
 const ctx = canvas.getContext("2d", { alpha: false });
@@ -73,7 +73,7 @@ function seasonKey(d = new Date()) {
   return "autumn";
 }
 
-// deterministic RNG to keep white circle stable per season
+// deterministic RNG to keep trigger circle stable per season
 function mulberry32(seed) {
   let a = seed >>> 0;
   return function() {
@@ -147,7 +147,7 @@ function updateConsoleValues() {
 }
 setInterval(updateConsoleValues, 10_000);
 
-// ---------- Circles + WHITE trigger circle ----------
+// ---------- Circles + PINK trigger circle ----------
 const N = 99;
 let circles = [];
 let infoCircle = null;
@@ -167,12 +167,16 @@ function initCircles() {
       isInfo: false
     });
   }
+
   infoCircle = circles[Math.floor(rng() * circles.length)];
   infoCircle.isInfo = true;
+
+  // make it easier to always see and tap
+  infoCircle.r = Math.max(infoCircle.r, 18);
 }
 initCircles();
 
-// tap white circle -> open console
+// tap/click pink circle -> open console
 canvas.addEventListener("pointerdown", (e) => {
   if (!overlay.classList.contains("hidden")) return;
   if (!infoCircle) return;
@@ -185,7 +189,7 @@ canvas.addEventListener("pointerdown", (e) => {
   const dy = y - infoCircle.y;
   const d = Math.sqrt(dx*dx + dy*dy);
 
-  if (d <= infoCircle.r + 10) {
+  if (d <= infoCircle.r + 14) {
     updateConsoleValues();
     openConsole();
   }
@@ -197,17 +201,17 @@ function bg() {
   const clouds = clamp(weather.cloudCover / 100, 0, 1);
   const fog = clamp(weather.fog, 0, 1);
 
-  // White -> Grey factor (fog weighs more than clouds)
-  const greyMix = clamp(clouds * 0.6 + fog * 0.9, 0, 1);
+  // Grey factor: "nuvoloso" drives grey; fog adds extra grey
+  const greyMix = clamp(clouds * 0.8 + fog * 0.6, 0, 1);
 
   if (isDay) {
-    // DAY: pure white -> soft grey
-    const v = Math.floor(lerp(255, 165, greyMix));
+    // DAY: white -> grey (pure white when clear)
+    const v = Math.floor(lerp(255, 170, greyMix));
     return `rgb(${v},${v},${v})`;
   } else {
-    // NIGHT: dark -> slightly lighter with clouds/fog
-    const v = Math.floor(lerp(18, 55, greyMix));
-    return `rgb(${v},${v},${Math.min(255, v + 6)})`;
+    // NIGHT: dark, slightly lifted by clouds/fog
+    const v = Math.floor(lerp(10, 55, greyMix));
+    return `rgb(${v},${v},${v})`;
   }
 }
 
@@ -273,21 +277,28 @@ function step(dt, ms) {
 }
 
 function draw(ms) {
-  ctx.fillStyle = toggleNight.checked ? "rgb(8,10,14)" : bg();
+  ctx.fillStyle = bg();
   ctx.fillRect(0, 0, W, H);
 
   for (const c of circles) {
     if (c.isInfo) {
-      const breathe = 0.12 + 0.10 * Math.sin(ms / 900);
-      ctx.strokeStyle = `rgba(255,255,255,${(0.78 + breathe).toFixed(3)})`;
-      ctx.lineWidth = 3.8;
+      // PINK filled trigger circle (always visible)
+      const pulse = 0.12 + 0.10 * Math.sin(ms / 850);
+      ctx.fillStyle = `rgba(255, 70, 170, ${0.85 + pulse})`;  // pink
+      ctx.strokeStyle = `rgba(255, 255, 255, 0.55)`;
+      ctx.lineWidth = 2.2;
+
+      ctx.beginPath();
+      ctx.arc(c.x, c.y, c.r, 0, PI * 2);
+      ctx.fill();
+      ctx.stroke();
     } else {
       ctx.strokeStyle = strokeColor(c);
       ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.arc(c.x, c.y, c.r, 0, PI * 2);
+      ctx.stroke();
     }
-    ctx.beginPath();
-    ctx.arc(c.x, c.y, c.r, 0, PI * 2);
-    ctx.stroke();
   }
 }
 
