@@ -1,11 +1,15 @@
 // π Weather Circles — Vivaldi concept (classical-style generative)
-// VISUAL CHANGES REQUESTED:
+// VISUAL:
 // - N circles = 777
 // - All circles except trigger: DAY = BLACK stroke, NIGHT = WHITE stroke
-// - Circles bigger than before (was *3 radius, now *4.5 radius)
-// - Trigger circle: PINK filled, NO border
-// PERFORMANCE:
-// - Batch-stroke all non-trigger circles in a single path
+// - Circles big
+// - Trigger circle: PINK FILLED, NO border, RADIUS ~ 3mm, moves across whole screen
+// - Background: sunny day => pure white; clouds/fog => very light greys; strong storm => stronger grey
+// AUDIO:
+// - 6-voice string pad + harpsichord continuo + violin melody + counterpoint
+// - Timbre muffled by fog/clouds (low-pass)
+// - Wind tremolo; rain pizz/clicks
+// - Alarm: circles vibrate + siren/trumpet
 
 const canvas = document.getElementById("c");
 const ctx = canvas.getContext("2d", { alpha: false });
@@ -65,6 +69,11 @@ const clamp = (x, a, b) => Math.max(a, Math.min(b, x));
 const lerp = (a, b, t) => a + (b - a) * t;
 const pad2 = (n) => String(n).padStart(2, "0");
 function tempNorm(tC) { return clamp((tC - (-15)) / (50 - (-15)), 0, 1); }
+
+function mmToPx(mm) {
+  // approx conversion: 96 dpi => 96px per inch; 1 inch = 25.4mm
+  return mm * (96 / 25.4);
+}
 
 function seasonKey(d = new Date()) {
   const m = d.getMonth();
@@ -147,7 +156,7 @@ function updateConsoleValues() {
 }
 setInterval(updateConsoleValues, 10_000);
 
-// ---------- Circles + PINK trigger circle ----------
+// ---------- Circles + trigger ----------
 const N = 777;
 let circles = [];
 let infoCircle = null;
@@ -157,8 +166,8 @@ function initCircles() {
 
   circles = [];
   for (let i = 0; i < N; i++) {
-    const baseR = 8 + rng() * 16;     // old radius range
-    const r = baseR * 4.5;           // BIGGER than previous (was *3)
+    const baseR = 8 + rng() * 16;
+    const r = baseR * 4.5; // big circles
     circles.push({
       x: rng() * W,
       y: rng() * H,
@@ -172,11 +181,13 @@ function initCircles() {
 
   infoCircle = circles[Math.floor(rng() * circles.length)];
   infoCircle.isInfo = true;
-  infoCircle.r = Math.max(infoCircle.r, 72); // always easy to find
+
+  // requested: pink trigger ~ 3mm radius
+  infoCircle.r = mmToPx(3);
 }
 initCircles();
 
-// tap/click pink circle -> open console
+// click/tap pink trigger -> open console (hit area is bigger but invisible)
 canvas.addEventListener("pointerdown", (e) => {
   if (!overlay.classList.contains("hidden")) return;
   if (!infoCircle) return;
@@ -189,7 +200,8 @@ canvas.addEventListener("pointerdown", (e) => {
   const dy = y - infoCircle.y;
   const d = Math.sqrt(dx*dx + dy*dy);
 
-  if (d <= infoCircle.r + 18) {
+  // bigger hit area
+  if (d <= infoCircle.r + 40) {
     updateConsoleValues();
     openConsole();
   }
@@ -217,12 +229,13 @@ function bg() {
 
   if (stormN > 0.65) {
     const t = clamp((stormN - 0.65) / 0.35, 0, 1);
-    const v = Math.floor(lerp(210, 140, t));
+    const v = Math.floor(lerp(215, 150, t));
     return `rgb(${v},${v},${v})`;
   }
 
+  // very light greys for cloud/fog
   const lightGreyMix = clamp(clouds * 0.65 + fog * 0.85, 0, 1);
-  const v = Math.floor(lerp(255, 235, lightGreyMix));
+  const v = Math.floor(lerp(255, 240, lightGreyMix));
   return `rgb(${v},${v},${v})`;
 }
 
@@ -284,10 +297,9 @@ function draw(ms) {
   ctx.fillRect(0, 0, W, H);
 
   const day = isDayEffective();
-  ctx.strokeStyle = day ? "rgba(0,0,0,0.88)" : "rgba(255,255,255,0.92)";
+  ctx.strokeStyle = day ? "rgba(0,0,0,0.90)" : "rgba(255,255,255,0.95)";
   ctx.lineWidth = 2.6;
 
-  // draw all non-trigger circles in one stroke
   ctx.beginPath();
   for (const c of circles) {
     if (c.isInfo) continue;
@@ -296,10 +308,10 @@ function draw(ms) {
   }
   ctx.stroke();
 
-  // trigger circle: pink filled, no border
+  // trigger: pink filled, no border
   if (infoCircle) {
     const pulse = 0.10 + 0.08 * Math.sin(ms / 850);
-    ctx.fillStyle = `rgba(255, 70, 170, ${0.90 + pulse})`;
+    ctx.fillStyle = `rgba(255, 70, 170, ${0.92 + pulse})`;
     ctx.beginPath();
     ctx.arc(infoCircle.x, infoCircle.y, infoCircle.r, 0, PI * 2);
     ctx.fill();
@@ -308,9 +320,6 @@ function draw(ms) {
 
 // ===================== AUDIO (Classical engine) =====================
 let audioCtx = null;
-
-// graph:
-// pad+melody+harpsichord+rain -> timbreFilter(LPF) -> compressor -> tremoloGain -> master -> destination
 let timbreFilter = null;
 let compressor = null;
 let tremoloGain = null;
@@ -433,7 +442,6 @@ function ensureAudio() {
 
   btnAudio.textContent = "Audio enabled";
 }
-
 btnAudio.addEventListener("click", ensureAudio);
 
 document.addEventListener("pointerdown", async () => {
