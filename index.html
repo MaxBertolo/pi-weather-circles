@@ -3,12 +3,51 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no" />
-  <title>π Weather Circles</title>
+  <title>π Weather Art</title>
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
   <canvas id="c"></canvas>
 
+  <!-- START MODE PICKER -->
+  <div id="modePicker" class="overlay" aria-hidden="false">
+    <div class="panel" role="dialog" aria-modal="true">
+      <div class="panel-header">
+        <div class="panel-title">Choose Artwork</div>
+        <button id="btn-skip" class="link" title="Use last choice">USE LAST</button>
+      </div>
+
+      <div class="panel-main">
+        <div class="subtitle">Same meteo, same music & menu — different visual language.</div>
+
+        <div class="modegrid">
+          <button class="modecard" data-mode="circles">
+            <div class="modeicon">◯</div>
+            <div class="modetitle">Cerchi</div>
+            <div class="modedesc">Ellissi vive, notte/giorno, meteo-driven.</div>
+          </button>
+
+          <button class="modecard" data-mode="splash">
+            <div class="modeicon">💧</div>
+            <div class="modetitle">Splash</div>
+            <div class="modedesc">Macchie nere che respirano: pioggia le espande, vento le sposta.</div>
+          </button>
+
+          <button class="modecard" data-mode="diamonds">
+            <div class="modeicon">◆</div>
+            <div class="modetitle">Diamanti</div>
+            <div class="modedesc">Rombi colorati che si deformano e fluttuano col meteo.</div>
+          </button>
+        </div>
+
+        <div class="hint">
+          Tip: the <span class="pinkdot">pink dot</span> always opens the menu.
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- MENU OVERLAY -->
   <div id="overlay" class="overlay hidden" aria-hidden="true">
     <div class="panel" role="dialog" aria-modal="true">
       <div class="panel-header">
@@ -48,6 +87,15 @@
         </div>
 
         <div class="controls">
+          <div class="row">
+            <div class="vlabel">MODE</div>
+            <select id="art-mode">
+              <option value="circles">Cerchi</option>
+              <option value="splash">Splash</option>
+              <option value="diamonds">Diamanti</option>
+            </select>
+          </div>
+
           <button id="btn-geo" class="btn">Use Geolocation</button>
 
           <div class="row">
@@ -60,7 +108,6 @@
             </select>
           </div>
 
-          <!-- Volume -->
           <div class="row volrow">
             <div class="vlabel">VOL</div>
             <input id="audio-volume" type="range" min="0" max="100" value="60" />
