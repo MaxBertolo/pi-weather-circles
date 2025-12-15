@@ -1,17 +1,13 @@
-// π Weather Circles — Vivaldi concept
-// VISUAL/MOTION:
-// - 199 circles + 1 pink trigger = 200 total
-// - All circles move at similar speeds with slight differences
-// - Pink moves faster than all others and BOUNCES on edges (no wrap)
-// - Others wrap around edges
-// - Day: black circles; Night: white circles; Pink always pink filled (no border)
-// - Background: sunny day pure white; clouds/fog very light greys; strong storm stronger grey
-// AUDIO + ALARM as previous.
+// π Weather Circles — with ellipse morphing + meteor-driven motion + pink bounce trigger
+// - 199 circles + 1 pink trigger
+// - all move with similar speeds (small jitter)
+// - pink is faster and bounces on edges (no wrap)
+// - circles can squash into ellipses and return (wind+rain amplify deformation)
 
 const canvas = document.getElementById("c");
 const ctx = canvas.getContext("2d", { alpha: false });
 
-// ---------- Overlay UI ----------
+// Overlay UI
 const overlay = document.getElementById("overlay");
 const btnExit = document.getElementById("btn-exit");
 
@@ -45,7 +41,7 @@ overlay.addEventListener("pointerdown", (e) => {
   if (e.target === overlay) closeConsole();
 }, { passive: true });
 
-// ---------- Resize ----------
+// Resize
 let W = 0, H = 0, DPR = 1;
 function resize() {
   DPR = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
@@ -60,16 +56,14 @@ function resize() {
 window.addEventListener("resize", () => { resize(); initCircles(); });
 resize();
 
-// ---------- Helpers ----------
+// Helpers
 const PI = Math.PI;
 const clamp = (x, a, b) => Math.max(a, Math.min(b, x));
 const lerp = (a, b, t) => a + (b - a) * t;
 const pad2 = (n) => String(n).padStart(2, "0");
-function tempNorm(tC) { return clamp((tC - (-15)) / (50 - (-15)), 0, 1); }
 
-function mmToPx(mm) {
-  return mm * (96 / 25.4);
-}
+function tempNorm(tC) { return clamp((tC - (-15)) / (50 - (-15)), 0, 1); }
+function mmToPx(mm) { return mm * (96 / 25.4); }
 
 function seasonKey(d = new Date()) {
   const m = d.getMonth();
@@ -78,7 +72,6 @@ function seasonKey(d = new Date()) {
   if (m >= 5 && m <= 7) return "summer";
   return "autumn";
 }
-
 function mulberry32(seed) {
   let a = seed >>> 0;
   return function() {
@@ -91,10 +84,9 @@ function mulberry32(seed) {
 function seasonSeed(sk) {
   return ({ winter: 314159, spring: 265358, summer: 979323, autumn: 846264 }[sk] || 314159);
 }
-
 function isDayEffective() { return toggleNight.checked ? false : weather.isDay; }
 
-// ---------- Weather ----------
+// Weather
 const weather = {
   tempC: 18,
   cloudCover: 40,
@@ -139,7 +131,7 @@ btnGeo.addEventListener("click", () => {
 fetchWeather().catch(()=>{});
 setInterval(() => fetchWeather().catch(()=>{}), 10 * 60 * 1000);
 
-// ---------- Console values ----------
+// Console values
 function updateConsoleValues() {
   const now = new Date();
   ovTime.textContent = `${pad2(now.getHours())}:${pad2(now.getMinutes())}`;
@@ -151,8 +143,8 @@ function updateConsoleValues() {
 }
 setInterval(updateConsoleValues, 10_000);
 
-// ---------- Circles ----------
-const N = 199; // +1 pink trigger
+// Circles
+const N = 199;
 let circles = [];
 let infoCircle = null;
 
@@ -163,38 +155,61 @@ function initCircles() {
   for (let i = 0; i < N; i++) {
     const baseR = 8 + rng() * 16;
     const r = baseR * 4.0;
-    const speedJitter = lerp(0.90, 1.10, rng());
+
     circles.push({
       x: rng() * W,
       y: rng() * H,
       r,
       p: (i + 1) * PI,
-      s: (0.9 + rng() * 0.3) * speedJitter,
+
+      // similar speeds (small jitter)
+      s: lerp(0.92, 1.08, rng()),
       h: rng() * 360,
-      isInfo: false
+      isInfo: false,
+
+      // ellipse morphing (random per circle)
+      squashPhase: rng() * PI * 2,
+      squashSpeed: 0.6 + rng() * 1.0,
+      squashBase:  0.03 + rng() * 0.05,
+      squashMax:   0.10 + rng() * 0.18,
+      rotPhase: rng() * PI * 2,
+      rotSpeed: 0.2 + rng() * 0.7,
+
+      squash: 0,
+      rot: 0
     });
   }
 
-  // Pink trigger as extra circle (faster + bounce physics)
+  // Pink trigger as extra circle (faster + bounce)
   infoCircle = {
     x: rng() * W,
     y: rng() * H,
     r: mmToPx(3),
     p: (N + 1) * PI,
-    s: 1.25,
-    speedMul: 1.75,    // faster than others
+
+    s: 1.0,
+    speedMul: 1.75,
     isInfo: true,
 
-    // bounce velocity (px/s) — initialized deterministic by season
     vx: (rng() < 0.5 ? -1 : 1) * lerp(90, 170, rng()),
-    vy: (rng() < 0.5 ? -1 : 1) * lerp(90, 170, rng())
+    vy: (rng() < 0.5 ? -1 : 1) * lerp(90, 170, rng()),
+
+    squashPhase: rng() * PI * 2,
+    squashSpeed: 1.1,
+    squashBase:  0.02,
+    squashMax:   0.18,
+    rotPhase: rng() * PI * 2,
+    rotSpeed: 0.9,
+
+    squash: 0,
+    rot: 0
   };
 
   circles.push(infoCircle);
 }
 initCircles();
 
-// click/tap pink trigger -> open console (hit area bigger)
+// Click pink trigger to open console
 canvas.addEventListener("pointerdown", (e) => {
   if (!overlay.classList.contains("hidden")) return;
   if (!infoCircle) return;
@@ -213,7 +228,7 @@ canvas.addEventListener("pointerdown", (e) => {
   }
 }, { passive: true });
 
-// ---------- Background ----------
+// Background
 function bg() {
   const day = isDayEffective();
 
@@ -239,16 +254,17 @@ function bg() {
     return `rgb(${v},${v},${v})`;
   }
 
+  // very light greys for cloud/fog
   const lightGreyMix = clamp(clouds * 0.65 + fog * 0.85, 0, 1);
   const v = Math.floor(lerp(255, 240, lightGreyMix));
   return `rgb(${v},${v},${v})`;
 }
 
-// ---------- Alarm state + vibration ----------
+// Alarm vibration
 let alarmRinging = false;
 let alarmEndsAt = 0;
 
-// ---------- Motion ----------
+// Motion + ellipse morphing
 function step(dt, ms) {
   const tN = tempNorm(weather.tempC);
   const rainN = clamp(weather.rainMm / 10, 0, 1);
@@ -262,11 +278,21 @@ function step(dt, ms) {
 
   const vibr = alarmRinging ? (3.5 + 6.0 * rainN) : 0;
 
-  // ----- Normal circles: wrap -----
+  // ellipse amplitude driven by weather
+  const squashWeather = clamp(0.15 + windN * 0.75 + rainN * 0.55, 0, 1);
+
+  // normal circles: wrap
   for (const c of circles) {
     if (c.isInfo) continue;
 
     c.p += dt * (PI * 0.18 + c.s * 0.06);
+
+    // ellipse morph update
+    c.squashPhase += dt * c.squashSpeed * (0.8 + 1.4 * rainN);
+    c.rotPhase    += dt * c.rotSpeed * (0.7 + 1.2 * windN);
+    const osc = Math.sin(c.squashPhase);
+    c.squash = (c.squashBase + c.squashMax * squashWeather) * osc;
+    c.rot = (Math.sin(c.rotPhase) * 0.35) * (0.15 + 0.85 * windN);
 
     const hx = Math.sin(c.p) * (0.9 + 1.3 * (1 - rainN));
     const hy = Math.cos(c.p / PI) * (0.9 + 1.3 * (1 - rainN));
@@ -297,19 +323,24 @@ function step(dt, ms) {
     if (c.y > H + c.r) c.y = -c.r;
   }
 
-  // ----- Pink trigger: bounce -----
+  // pink trigger: bounce (no wrap)
   if (infoCircle) {
     const mul = infoCircle.speedMul || 1.75;
-
-    // meteo affects its speed (slightly)
     const speedWeather = lerp(0.85, 1.25, clamp(tN * 0.7 + rainN * 0.5 + windN * 0.2, 0, 1));
     const speed = mul * speedWeather;
 
-    // "steer" with wind a bit, but keep bounce physical
+    // ellipse morph for pink too
+    infoCircle.squashPhase += dt * infoCircle.squashSpeed * (1.0 + 1.6 * rainN);
+    infoCircle.rotPhase    += dt * infoCircle.rotSpeed * (0.8 + 1.6 * windN);
+    const oscP = Math.sin(infoCircle.squashPhase);
+    infoCircle.squash = (infoCircle.squashBase + infoCircle.squashMax * squashWeather) * oscP;
+    infoCircle.rot = (Math.sin(infoCircle.rotPhase) * 0.6) * (0.15 + 0.85 * windN);
+
+    // wind nudges velocity
     infoCircle.vx += wx * 12 * dt;
     infoCircle.vy += wy * 12 * dt;
 
-    // tiny harmonic wobble (same family as others)
+    // small harmonic wobble
     infoCircle.p += dt * (PI * 0.22 + infoCircle.s * 0.10) * speed;
     const wobX = Math.sin(infoCircle.p) * (14 + 10 * (1 - rainN));
     const wobY = Math.cos(infoCircle.p / PI) * (10 + 8 * (1 - rainN));
@@ -322,7 +353,6 @@ function step(dt, ms) {
       infoCircle.y += Math.cos(ms / 41) * vibr * dt * 70;
     }
 
-    // bounce off edges, keep inside [r, W-r]
     const r = infoCircle.r;
     if (infoCircle.x <= r) { infoCircle.x = r; infoCircle.vx = Math.abs(infoCircle.vx); }
     if (infoCircle.x >= W - r) { infoCircle.x = W - r; infoCircle.vx = -Math.abs(infoCircle.vx); }
@@ -333,7 +363,7 @@ function step(dt, ms) {
   if (alarmRinging && ms >= alarmEndsAt) stopAlarm();
 }
 
-// ---------- Draw ----------
+// Draw (ellipses for all circles)
 function draw(ms) {
   ctx.fillStyle = bg();
   ctx.fillRect(0, 0, W, H);
@@ -342,23 +372,34 @@ function draw(ms) {
   ctx.strokeStyle = day ? "rgba(0,0,0,0.90)" : "rgba(255,255,255,0.95)";
   ctx.lineWidth = 2.6;
 
+  // non-pink batched ellipses
   ctx.beginPath();
   for (const c of circles) {
     if (c.isInfo) continue;
-    ctx.moveTo(c.x + c.r, c.y);
-    ctx.arc(c.x, c.y, c.r, 0, PI * 2);
+
+    const rx = c.r * (1 + (c.squash || 0));
+    const ry = c.r * (1 - (c.squash || 0));
+
+    ctx.moveTo(c.x + rx, c.y);
+    ctx.ellipse(c.x, c.y, Math.max(1, rx), Math.max(1, ry), (c.rot || 0), 0, PI * 2);
   }
   ctx.stroke();
 
-  // pink trigger (filled, no border)
-  const pulse = 0.10 + 0.08 * Math.sin(ms / 850);
-  ctx.fillStyle = `rgba(255, 70, 170, ${0.92 + pulse})`;
-  ctx.beginPath();
-  ctx.arc(infoCircle.x, infoCircle.y, infoCircle.r, 0, PI * 2);
-  ctx.fill();
+  // pink trigger (filled ellipse, no border)
+  if (infoCircle) {
+    const pulse = 0.10 + 0.08 * Math.sin(ms / 850);
+    ctx.fillStyle = `rgba(255, 70, 170, ${0.92 + pulse})`;
+
+    const rx = infoCircle.r * (1 + (infoCircle.squash || 0));
+    const ry = infoCircle.r * (1 - (infoCircle.squash || 0));
+
+    ctx.beginPath();
+    ctx.ellipse(infoCircle.x, infoCircle.y, Math.max(1, rx), Math.max(1, ry), (infoCircle.rot || 0), 0, PI * 2);
+    ctx.fill();
+  }
 }
 
-// ===================== AUDIO (kept) =====================
+// ===================== AUDIO (Vivaldi-ish) + Alarm =====================
 let audioCtx = null;
 let timbreFilter = null;
 let compressor = null;
@@ -430,7 +471,7 @@ function ensureAudio() {
 
   harpBus = audioCtx.createGain();   harpBus.gain.value = 0.22;
   melodyBus = audioCtx.createGain(); melodyBus.gain.value = 0.55;
-  rainBus = audioCtx.createGain();   rainBus.gain.value = 0.18;
+  rainBus = audioCtx.createGain();   rainBus.gain.value = 0.22;
 
   harpBus.connect(timbreFilter);
   melodyBus.connect(timbreFilter);
@@ -502,6 +543,10 @@ function updateTimbreAndDynamics() {
   const tremDepth = clamp(0.02 + windN * 0.14, 0.02, 0.18);
   windLFODepth.gain.setTargetAtTime(tremDepth, audioCtx.currentTime, 0.18);
   windLFO.frequency.setTargetAtTime(lerp(3.2, 7.5, windN), audioCtx.currentTime, 0.25);
+
+  harpBus.gain.setTargetAtTime(lerp(0.18, 0.30, rainN), audioCtx.currentTime, 0.18);
+  melodyBus.gain.setTargetAtTime(lerp(0.52, 0.62, 1 - muffle), audioCtx.currentTime, 0.22);
+  rainBus.gain.setTargetAtTime(lerp(0.10, 0.35, rainN), audioCtx.currentTime, 0.14);
 }
 
 function degToSemitone(mode, degree) {
@@ -515,7 +560,11 @@ function degToSemitone(mode, degree) {
 function buildChordSemis(mode, triadRootDegree, seasonName) {
   const r = triadRootDegree;
   const triad = [r, r + 2, r + 4];
-  const ext = (seasonName === "summer") ? [r + 6, r + 1, r + 5] : [r + 6, r + 1, r + 3];
+
+  let ext;
+  if (seasonName === "summer") ext = [r + 6, r + 1, r + 5];
+  else ext = [r + 6, r + 1, r + 3];
+
   const degrees = [...triad, ...ext].slice(0, 6);
   const semis = degrees.map(d => degToSemitone(mode, d));
   semis.sort((a,b)=>a-b);
@@ -552,15 +601,23 @@ function padOff() {
 function harpPluck(freq, when, vel = 0.12) {
   const o = audioCtx.createOscillator();
   const g = audioCtx.createGain();
+  const bp = audioCtx.createBiquadFilter();
+
   o.type = "square";
   o.frequency.setValueAtTime(freq, when);
+
+  bp.type = "bandpass";
+  bp.frequency.setValueAtTime(lerp(900, 1800, Math.random()), when);
+  bp.Q.value = 1.0;
 
   g.gain.setValueAtTime(0.0001, when);
   g.gain.exponentialRampToValueAtTime(vel, when + 0.008);
   g.gain.exponentialRampToValueAtTime(0.0001, when + 0.18);
 
-  o.connect(g);
+  o.connect(bp);
+  bp.connect(g);
   g.connect(harpBus);
+
   o.start(when);
   o.stop(when + 0.22);
 }
@@ -642,7 +699,7 @@ function updateMusic(ms) {
   }
 }
 
-// ===================== Alarm (same) =====================
+// Alarm persistence
 function loadAlarm() {
   try {
     const saved = JSON.parse(localStorage.getItem("pi_alarm") || "null");
@@ -684,6 +741,7 @@ function stopAlarm() {
 alarmTest.onclick = () => startAlarm(8000);
 alarmStop.onclick = () => stopAlarm();
 
+// fire alarm at HH:MM
 setInterval(() => {
   if (!alarmEnabled.checked) return;
   if (!alarmTime.value) return;
@@ -760,7 +818,7 @@ function playTrumpet(durationMs) {
   alarmNode = o1;
 }
 
-// ---------- Main loop ----------
+// Main loop
 let last = performance.now();
 function loop(ms) {
   const dt = clamp((ms - last) / 1000, 0, 0.05);
