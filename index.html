@@ -8,66 +8,94 @@
 </head>
 <body>
 
-  <!-- HUD -->
-  <div id="hud" class="hud">
-    <div class="hud-row">
-      <div class="hud-item" title="Local time"><span class="ico">🕒</span><span id="hud-time">--:--</span></div>
-      <div class="hud-item" title="Temperature"><span class="ico">🌡️</span><span id="hud-temp">--</span></div>
-      <div class="hud-item" title="Clouds"><span class="ico">☁️</span><span id="hud-cloud">--</span></div>
-      <div class="hud-item" title="Rain"><span class="ico">🌧️</span><span id="hud-rain">--</span></div>
-      <div class="hud-item" title="Wind"><span class="ico">🌬️</span><span id="hud-wind">--</span></div>
-      <div class="hud-item" title="Fog"><span class="ico">🌫️</span><span id="hud-fog">--</span></div>
-
-      <!-- full circle toggle -->
-      <button id="btn-info" class="info-dot" title="Info"></button>
-    </div>
-  </div>
-
-  <!-- Panel -->
-  <div id="panel" class="panel hidden">
-    <div class="panel-header">
-      <div class="panel-title">Weather & Controls</div>
-      <div class="panel-actions">
-        <button id="btn-geo" class="btn">Use my location</button>
-        <button id="btn-audio" class="btn">Enable audio</button>
-        <label class="toggle">
-          <input type="checkbox" id="toggle-night" />
-          <span>Night mode</span>
-        </label>
-      </div>
-    </div>
-
-    <div id="panel-text" class="panel-text"></div>
-
-    <div class="alarm">
-      <div class="alarm-title">Alarm</div>
-      <div class="alarm-row">
-        <label class="toggle">
-          <input type="checkbox" id="alarm-enabled" />
-          <span>Enabled</span>
-        </label>
-
-        <label class="field">
-          <span>Time</span>
-          <input id="alarm-time" type="time" />
-        </label>
-
-        <label class="field">
-          <span>Sound</span>
-          <select id="alarm-sound">
-            <option value="siren">Siren</option>
-            <option value="trumpet">Trumpet (alzabandiera)</option>
-          </select>
-        </label>
-
-        <button id="alarm-test" class="btn">Test</button>
-        <button id="alarm-stop" class="btn">Stop</button>
-      </div>
-      <div class="alarm-hint">When ringing: circles vibrate + alarm sound plays.</div>
-    </div>
-  </div>
-
   <canvas id="c"></canvas>
+
+  <!-- Fullscreen overlay (hidden by default) -->
+  <div id="overlay" class="overlay hidden" aria-hidden="true">
+    <div class="overlay-card">
+      <div class="overlay-top">
+        <div class="overlay-title">π Weather Console</div>
+        <button id="btn-exit" class="exit">EXIT</button>
+      </div>
+
+      <div class="grid">
+        <div class="tile">
+          <div class="k">🕒 Local time</div>
+          <div id="ov-time" class="v">--:--</div>
+        </div>
+
+        <div class="tile">
+          <div class="k">🌡️ Temperature</div>
+          <div id="ov-temp" class="v">--</div>
+        </div>
+
+        <div class="tile">
+          <div class="k">☁️ Clouds</div>
+          <div id="ov-cloud" class="v">--</div>
+        </div>
+
+        <div class="tile">
+          <div class="k">🌧️ Rain</div>
+          <div id="ov-rain" class="v">--</div>
+        </div>
+
+        <div class="tile">
+          <div class="k">🌬️ Wind</div>
+          <div id="ov-wind" class="v">--</div>
+        </div>
+
+        <div class="tile">
+          <div class="k">🌫️ Fog</div>
+          <div id="ov-fog" class="v">--</div>
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="section-title">Controls</div>
+        <div class="row">
+          <button id="btn-geo" class="btn">Use my location</button>
+          <button id="btn-audio" class="btn">Enable audio</button>
+
+          <label class="toggle">
+            <input type="checkbox" id="toggle-night" />
+            <span>Night mode</span>
+          </label>
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="section-title">Alarm</div>
+        <div class="row">
+          <label class="toggle">
+            <input type="checkbox" id="alarm-enabled" />
+            <span>Enabled</span>
+          </label>
+
+          <label class="field">
+            <span>Time</span>
+            <input id="alarm-time" type="time" />
+          </label>
+
+          <label class="field">
+            <span>Sound</span>
+            <select id="alarm-sound">
+              <option value="siren">Siren</option>
+              <option value="trumpet">Trumpet (alzabandiera)</option>
+            </select>
+          </label>
+
+          <button id="alarm-test" class="btn">Test</button>
+          <button id="alarm-stop" class="btn">Stop</button>
+        </div>
+
+        <div class="hint">
+          Tap/click the white circle to open this console. EXIT returns to the artwork.
+        </div>
+      </div>
+
+    </div>
+  </div>
+
   <script src="app.js"></script>
 </body>
 </html>
