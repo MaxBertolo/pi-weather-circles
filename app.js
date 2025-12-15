@@ -1,6 +1,9 @@
 // π Weather Art — 3 modes: circles / splash / diamonds
 // - same background, weather, audio, alarm, menu
 // - pink dot always present; opens menu; bounces; rotates slower
+// UPDATE:
+// - Diamonds palette matched to your screenshot background (excluding text/logo).
+// - Splash: stronger droplets (teardrops) in heavy rain, tilted by wind.
 
 const canvas = document.getElementById("c");
 const ctx = canvas.getContext("2d", { alpha: false });
@@ -64,6 +67,19 @@ function seasonSeed(sk) {
   return ({ winter: 314159, spring: 265358, summer: 979323, autumn: 846264 }[sk] || 314159);
 }
 function isDayEffective() { return toggleNight.checked ? false : weather.isDay; }
+
+function windVec() {
+  const windN = clamp(weather.windMs / 12, 0, 1);
+  const dir = (weather.windDirDeg || 0) * PI / 180;
+  return { wx: Math.cos(dir) * windN, wy: Math.sin(dir) * windN, windN, dir };
+}
+function rainAngleForDraw() {
+  // rain direction = downward + wind tilt
+  const { wx, wy } = windVec();
+  const dx = wx * 0.9;
+  const dy = 1.0 + wy * 0.7;
+  return Math.atan2(dy, dx); // angle of rain "flow"
+}
 
 // ---------- Overlays ----------
 function openConsole() {
@@ -234,11 +250,20 @@ let circles = [];   // circles mode
 let splashes = [];  // splash mode
 let diamonds = [];  // diamonds mode
 
-// Diamonds palette (edit freely if you want to match your slide precisely)
+// ✅ Diamonds palette matched to your screenshot (background polygons)
 const DIAMOND_PALETTE = [
-  "#FF3B30", "#FF9500", "#FFCC00", "#34C759",
-  "#0A84FF", "#5E5CE6", "#AF52DE", "#FF2D55",
-  "#00C7BE", "#64D2FF"
+  "#BA5900", // deep orange/brown
+  "#FF8100", // orange
+  "#088DEF", // bright cyan-blue
+  "#0B24C5", // deep blue
+  "#7B1DEF", // violet
+  "#62027D", // deep purple
+  "#D245D3", // magenta
+  "#AE048F", // purple-magenta
+  "#FA01A9", // hot pink
+  "#E40674", // pink/red
+  "#CC021C", // red
+  "#F17677"  // coral
 ];
 
 function initArt(mode) {
@@ -262,7 +287,7 @@ function initArt(mode) {
     squashBase: 0.02,
     squashMax: 0.18,
     rotPhase: rng() * TAU,
-    rotSpeed: 0.35,   // slow rotation
+    rotSpeed: 0.35,
     squash: 0,
     rot: 0
   };
@@ -293,13 +318,15 @@ function initArt(mode) {
   }
 
   if (mode === "splash") {
-    // Fewer, larger blobs to read well
     const N = 70;
     for (let i = 0; i < N; i++) {
       const base = lerp(22, 70, rng());
       const points = Math.floor(lerp(7, 12, rng()));
       const amps = Array.from({ length: points }, () => lerp(0.15, 0.55, rng()));
       const phases = Array.from({ length: points }, () => rng() * TAU);
+
+      // deterministic "droplet seeds"
+      const dropSeeds = Array.from({ length: 10 }, () => rng() * TAU);
 
       splashes.push({
         x: rng() * W,
@@ -312,7 +339,8 @@ function initArt(mode) {
         drift: 0.6 + rng() * 0.8,
         rot: rng() * TAU,
         rotSpeed: lerp(-0.10, 0.10, rng()),
-        p: rng() * TAU
+        p: rng() * TAU,
+        dropSeeds
       });
     }
   }
@@ -370,12 +398,9 @@ let alarmEndsAt = 0;
 function step(dt, ms) {
   const tN = tempNorm(weather.tempC);
   const rainN = clamp(weather.rainMm / 10, 0, 1);
-  const windN = clamp(weather.windMs / 12, 0, 1);
+  const { wx, wy, windN } = windVec();
 
   const base = lerp(14, 60, tN);
-  const windDir = (weather.windDirDeg || 0) * PI / 180;
-  const wx = Math.cos(windDir) * windN;
-  const wy = Math.sin(windDir) * windN;
 
   const vibr = alarmRinging ? (3.5 + 6.0 * rainN) : 0;
   const squashWeather = clamp(0.15 + windN * 0.75 + rainN * 0.55, 0, 1);
@@ -423,7 +448,6 @@ function step(dt, ms) {
 
   // ---- Mode: splash ----
   if (currentMode === "splash") {
-    // pioggia => più espansione (breathing più forte + più instabile)
     const expand = lerp(0.08, 0.55, rainN);
     const storm = clamp(rainN * 0.8 + windN * 0.35, 0, 1);
 
@@ -431,27 +455,22 @@ function step(dt, ms) {
       s.p += dt * s.wob * (0.7 + 1.6 * storm);
       s.rot += dt * s.rotSpeed * (0.4 + 1.4 * windN);
 
-      // vento sposta lo schizzo
       s.x += wx * base * s.drift * dt * 1.35;
       s.y += wy * base * s.drift * dt * 1.35;
 
-      // gravità lieve quando piove
       s.y += base * (0.12 + 0.55 * rainN) * dt * 0.35;
 
-      // vibrazione sveglia
       if (vibr > 0) {
         s.x += Math.sin(ms / 28 + s.p) * vibr * dt * 55;
         s.y += Math.cos(ms / 33 + s.p) * vibr * dt * 55;
       }
 
-      // wrap
-      const pad = 120;
+      const pad = 140;
       if (s.x < -pad) s.x = W + pad;
       if (s.x > W + pad) s.x = -pad;
       if (s.y < -pad) s.y = H + pad;
       if (s.y > H + pad) s.y = -pad;
 
-      // breathing factor computed in draw via s.p, expand, storm
       s._expand = expand;
       s._storm = storm;
     }
@@ -465,11 +484,9 @@ function step(dt, ms) {
       d.a += dt * d.spin * (0.6 + 1.8 * windN);
       d.skewPhase += dt * d.skewSpeed * (0.7 + 1.3 * storm);
 
-      // drift + wind vector
       d.x += (d.vx + wx * base * 1.6) * dt;
       d.y += (d.vy + wy * base * 1.6) * dt;
 
-      // rain adds down force
       d.y += base * (0.05 + 0.45 * rainN) * dt;
 
       if (vibr > 0) {
@@ -477,7 +494,7 @@ function step(dt, ms) {
         d.y += Math.cos(ms / 37 + d.a) * vibr * dt * 60;
       }
 
-      const pad = 140;
+      const pad = 160;
       if (d.x < -pad) d.x = W + pad;
       if (d.x > W + pad) d.x = -pad;
       if (d.y < -pad) d.y = H + pad;
@@ -499,7 +516,6 @@ function step(dt, ms) {
     infoDot.vx += wx * 12 * dt;
     infoDot.vy += wy * 12 * dt;
 
-    // slow p rotation (so it "turns" slower)
     infoDot.p += dt * (PI * 0.14 + infoDot.s * 0.06) * speed;
 
     const wobX = Math.sin(infoDot.p) * (14 + 10 * (1 - rainN));
@@ -551,16 +567,15 @@ function drawCircles(ms) {
 }
 
 function drawSplashes(ms) {
-  // Always BLACK as requested
-  // very slightly softer at night
+  // Always BLACK (as requested), slightly softer at night
   const alpha = isDayEffective() ? 0.92 : 0.78;
   ctx.fillStyle = `rgba(0,0,0,${alpha})`;
 
-  for (const s of splashes) {
-    const rainN = clamp(weather.rainMm / 10, 0, 1);
-    const windN = clamp(weather.windMs / 12, 0, 1);
+  const rainN = clamp(weather.rainMm / 10, 0, 1);
+  const { windN } = windVec();
+  const ang = rainAngleForDraw();
 
-    // breathing amplitude grows with rain
+  for (const s of splashes) {
     const breathe = 1 + Math.sin(s.p) * (s._expand || 0.2);
     const jitter = 0.10 + 0.25 * (s._storm || 0);
     const base = s.base * breathe;
@@ -581,33 +596,72 @@ function drawSplashes(ms) {
       else ctx.lineTo(x, y);
     }
     ctx.closePath();
-
-    // Optional “splatter drops” when rain is strong (still black)
-    if (rainN > 0.55) {
-      const drops = Math.floor(lerp(0, 4, clamp((rainN - 0.55) / 0.45, 0, 1)));
-      for (let k = 0; k < drops; k++) {
-        const da = Math.random() * TAU;
-        const dr = base * lerp(0.9, 1.35, Math.random());
-        const dx = Math.cos(da) * dr + wxFromWind(windN);
-        const dy = Math.sin(da) * dr;
-        ctx.moveTo(s.x + dx, s.y + dy);
-        ctx.arc(s.x + dx, s.y + dy, lerp(2, 6, Math.random()), 0, TAU);
-      }
-    }
-
     ctx.fill();
+
+    // ✅ Strong droplets in heavy rain: teardrops + small splats
+    if (rainN > 0.35) {
+      drawRainDropletsForSplash(s, ms, base, rainN, windN, ang);
+    }
   }
 }
 
-function wxFromWind(windN) {
-  const dir = (weather.windDirDeg || 0) * PI / 180;
-  return Math.cos(dir) * windN * 18;
+function drawRainDropletsForSplash(s, ms, base, rainN, windN, ang) {
+  // number grows quickly with rain intensity
+  const k = Math.floor(lerp(0, 10, clamp((rainN - 0.35) / 0.65, 0, 1)));
+  if (k <= 0) return;
+
+  ctx.save();
+  ctx.translate(s.x, s.y);
+
+  // tilt with wind; add tiny time wobble
+  ctx.rotate(ang + Math.sin(ms / 1800 + s.p) * 0.08);
+
+  for (let i = 0; i < k; i++) {
+    const seed = s.dropSeeds[i % s.dropSeeds.length];
+    const t = (ms / 1000);
+
+    // distance from blob edge (animated)
+    const orbit = base * lerp(0.65, 1.45, (Math.sin(seed + t * (0.7 + 1.6 * rainN)) * 0.5 + 0.5));
+    const side = (i % 2 === 0) ? -1 : 1;
+    const lateral = side * base * lerp(0.15, 0.65, (Math.sin(seed * 1.7 + t * 0.9) * 0.5 + 0.5));
+
+    // droplet size: bigger with rain, slightly with wind
+    const r = lerp(2.5, 9.0, rainN) * lerp(0.9, 1.15, windN);
+
+    // place along "rain axis" (positive y after rotation)
+    const x = lateral;
+    const y = orbit;
+
+    // teardrop: ellipse + small triangle tail
+    ctx.beginPath();
+    ctx.ellipse(x, y, r * 0.75, r * 1.25, 0, 0, TAU);
+    ctx.fill();
+
+    // tail
+    ctx.beginPath();
+    ctx.moveTo(x, y + r * 1.15);
+    ctx.lineTo(x - r * 0.40, y + r * 1.85);
+    ctx.lineTo(x + r * 0.40, y + r * 1.85);
+    ctx.closePath();
+    ctx.fill();
+
+    // occasional micro-splat
+    if (rainN > 0.70 && (i % 3 === 0)) {
+      const rr = r * 0.55;
+      ctx.beginPath();
+      ctx.arc(x + rr * 0.3, y + r * 2.3, rr, 0, TAU);
+      ctx.arc(x - rr * 0.35, y + r * 2.5, rr * 0.8, 0, TAU);
+      ctx.fill();
+    }
+  }
+
+  ctx.restore();
 }
 
 function drawDiamonds(ms) {
   const tN = tempNorm(weather.tempC);
   const rainN = clamp(weather.rainMm / 10, 0, 1);
-  const windN = clamp(weather.windMs / 12, 0, 1);
+  const { windN } = windVec();
   const storm = clamp(rainN * 0.7 + windN * 0.4, 0, 1);
 
   for (const d of diamonds) {
@@ -615,7 +669,6 @@ function drawDiamonds(ms) {
     const sx = 1 + skew;
     const sy = 1 - skew;
 
-    // diamonds brighten a bit during day, soften at night
     const a = isDayEffective() ? d.alpha : d.alpha * 0.78;
     ctx.fillStyle = hexToRgba(d.color, a);
 
@@ -623,7 +676,6 @@ function drawDiamonds(ms) {
     const w = size * sx;
     const h = size * sy;
 
-    // diamond points (rhombus)
     const p0 = rotatePoint(0, -h, d.a);
     const p1 = rotatePoint(w, 0, d.a);
     const p2 = rotatePoint(0, h, d.a);
@@ -867,7 +919,7 @@ document.addEventListener("pointerdown", async () => {
 function weatherDrivenTempo(genreCfg) {
   const tN = tempNorm(weather.tempC);
   const rainN = clamp(weather.rainMm / 10, 0, 1);
-  const windN = clamp(weather.windMs / 12, 0, 1);
+  const { windN } = windVec();
 
   const energy = clamp(tN * 0.65 + rainN * 0.55 + windN * 0.20, 0, 1);
   const [b0, b1] = genreCfg.bpm;
@@ -969,7 +1021,7 @@ function playPerc(ms, bpm, genreCfg) {
   if (!audioCtx) return;
 
   const rainN = clamp(weather.rainMm / 10, 0, 1);
-  const windN = clamp(weather.windMs / 12, 0, 1);
+  const { windN } = windVec();
 
   let dens = clamp(0.10 + rainN * 0.55 + windN * 0.25, 0, 0.95);
   if (!isDayEffective()) dens *= 0.65;
@@ -1032,7 +1084,7 @@ function playMelody(ms, bpm, genreCfg) {
 
   const tN = tempNorm(weather.tempC);
   const rainN = clamp(weather.rainMm / 10, 0, 1);
-  const windN = clamp(weather.windMs / 12, 0, 1);
+  const { windN } = windVec();
 
   const scale = (audioGenreSel.value === "blues")
     ? [0, 3, 5, 6, 7, 10]
@@ -1090,11 +1142,12 @@ function updateMusic(ms) {
   }
 
   if (ms >= nextChordAtMs) {
-    currentChord = pickChord(genreCfg);
+    const chord = pickChord(genreCfg);
+    currentChord = chord;
     setPadVoicing(rootHz, currentChord, genreCfg);
 
     const rainN = clamp(weather.rainMm / 10, 0, 1);
-    const windN = clamp(weather.windMs / 12, 0, 1);
+    const { windN } = windVec();
     let stabProb = clamp(0.15 + rainN * 0.45 + windN * 0.20, 0.10, 0.80);
     if (!isDayEffective()) stabProb *= 0.55;
 
