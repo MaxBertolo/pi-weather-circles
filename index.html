@@ -2,97 +2,88 @@
 <html lang="it">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no" />
   <title>π Weather Circles</title>
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
-
   <canvas id="c"></canvas>
 
-  <!-- Fullscreen overlay (hidden by default) -->
+  <!-- Overlay (hidden by default) -->
   <div id="overlay" class="overlay hidden" aria-hidden="true">
-    <div class="overlay-card">
-      <div class="overlay-top">
-        <div class="overlay-title">π Weather Console</div>
-        <button id="btn-exit" class="exit">EXIT</button>
+    <div class="panel" role="dialog" aria-modal="true">
+      <div class="panel-header">
+        <div class="panel-title">π Weather Console</div>
+        <button id="btn-exit" class="link">EXIT</button>
       </div>
 
-      <div class="grid">
-        <div class="tile">
-          <div class="k">🕒 Local time</div>
-          <div id="ov-time" class="v">--:--</div>
+      <div class="panel-main">
+        <div class="bigtime" id="ov-time">--:--</div>
+
+        <div class="grid">
+          <div class="tile">
+            <div class="icon">🌡️</div>
+            <div class="label">TEMP</div>
+            <div class="value" id="ov-temp">--°C</div>
+          </div>
+          <div class="tile">
+            <div class="icon">☁️</div>
+            <div class="label">CLOUD</div>
+            <div class="value" id="ov-cloud">--%</div>
+          </div>
+          <div class="tile">
+            <div class="icon">🌧️</div>
+            <div class="label">RAIN</div>
+            <div class="value" id="ov-rain">-- mm/h</div>
+          </div>
+          <div class="tile">
+            <div class="icon">💨</div>
+            <div class="label">WIND</div>
+            <div class="value" id="ov-wind">-- m/s</div>
+          </div>
+          <div class="tile">
+            <div class="icon">🌫️</div>
+            <div class="label">FOG</div>
+            <div class="value" id="ov-fog">--%</div>
+          </div>
         </div>
 
-        <div class="tile">
-          <div class="k">🌡️ Temperature</div>
-          <div id="ov-temp" class="v">--</div>
-        </div>
+        <div class="controls">
+          <button id="btn-geo" class="btn">Use Geolocation</button>
+          <button id="btn-audio" class="btn">Enable Audio</button>
 
-        <div class="tile">
-          <div class="k">☁️ Clouds</div>
-          <div id="ov-cloud" class="v">--</div>
-        </div>
-
-        <div class="tile">
-          <div class="k">🌧️ Rain</div>
-          <div id="ov-rain" class="v">--</div>
-        </div>
-
-        <div class="tile">
-          <div class="k">🌬️ Wind</div>
-          <div id="ov-wind" class="v">--</div>
-        </div>
-
-        <div class="tile">
-          <div class="k">🌫️ Fog</div>
-          <div id="ov-fog" class="v">--</div>
-        </div>
-      </div>
-
-      <div class="section">
-        <div class="section-title">Controls</div>
-        <div class="row">
-          <button id="btn-geo" class="btn">Use my location</button>
-          <button id="btn-audio" class="btn">Enable audio</button>
-
-          <label class="toggle">
-            <input type="checkbox" id="toggle-night" />
-            <span>Night mode</span>
+          <label class="switch">
+            <input id="toggle-night" type="checkbox" />
+            <span>Force night</span>
           </label>
         </div>
-      </div>
 
-      <div class="section">
-        <div class="section-title">Alarm</div>
-        <div class="row">
-          <label class="toggle">
-            <input type="checkbox" id="alarm-enabled" />
+        <div class="alarm">
+          <div class="alarm-title">⏰ Alarm</div>
+
+          <label class="row">
+            <input id="alarm-enabled" type="checkbox" />
             <span>Enabled</span>
           </label>
 
-          <label class="field">
-            <span>Time</span>
+          <div class="row">
             <input id="alarm-time" type="time" />
-          </label>
-
-          <label class="field">
-            <span>Sound</span>
             <select id="alarm-sound">
               <option value="siren">Siren</option>
-              <option value="trumpet">Trumpet (alzabandiera)</option>
+              <option value="trumpet">Trumpet</option>
             </select>
-          </label>
+          </div>
 
-          <button id="alarm-test" class="btn">Test</button>
-          <button id="alarm-stop" class="btn">Stop</button>
+          <div class="row">
+            <button id="alarm-test" class="btn small">Test</button>
+            <button id="alarm-stop" class="btn small">Stop</button>
+          </div>
         </div>
 
         <div class="hint">
-          Tap/click the white circle to open this console. EXIT returns to the artwork.
+          Tap the <span class="pinkdot">pink dot</span> on the artwork to open/close this console.
         </div>
       </div>
-
     </div>
   </div>
 
