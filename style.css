@@ -14,7 +14,6 @@ html, body {
   touch-action: manipulation;
 }
 
-/* Overlay */
 .overlay {
   position: fixed;
   inset: 0;
@@ -107,9 +106,7 @@ html, body {
   background: #111;
   color: #fff;
 }
-.btn.small {
-  padding: 10px 12px;
-}
+.btn.small { padding: 10px 12px; }
 
 .switch {
   display: flex;
@@ -134,11 +131,33 @@ html, body {
   gap: 10px;
   margin: 8px 0;
 }
-#alarm-time, #alarm-sound {
+
+#audio-genre, #alarm-time, #alarm-sound {
+  flex: 1;
   border-radius: 10px;
   padding: 10px;
   border: 1px solid rgba(0,0,0,0.12);
   font-weight: 700;
+  background: #fff;
+}
+
+.volrow {
+  gap: 12px;
+}
+.vlabel {
+  width: 44px;
+  font-weight: 900;
+  letter-spacing: 1px;
+  opacity: 0.75;
+}
+#audio-volume {
+  flex: 1;
+}
+.vval {
+  width: 58px;
+  text-align: right;
+  font-weight: 900;
+  opacity: 0.75;
 }
 
 .hint {
@@ -151,3 +170,4 @@ html, body {
   font-weight: 900;
   color: rgb(255, 70, 170);
 }
+
