@@ -9,7 +9,6 @@
 <body>
   <canvas id="c"></canvas>
 
-  <!-- Overlay (hidden by default) -->
   <div id="overlay" class="overlay hidden" aria-hidden="true">
     <div class="panel" role="dialog" aria-modal="true">
       <div class="panel-header">
@@ -50,7 +49,23 @@
 
         <div class="controls">
           <button id="btn-geo" class="btn">Use Geolocation</button>
-          <button id="btn-audio" class="btn">Enable Audio</button>
+
+          <div class="row">
+            <button id="btn-audio" class="btn">Audio: OFF</button>
+            <select id="audio-genre">
+              <option value="jazz">Jazz</option>
+              <option value="soul">Soul</option>
+              <option value="blues">Blues</option>
+              <option value="classical">Classical</option>
+            </select>
+          </div>
+
+          <!-- Volume -->
+          <div class="row volrow">
+            <div class="vlabel">VOL</div>
+            <input id="audio-volume" type="range" min="0" max="100" value="60" />
+            <div id="audio-volume-val" class="vval">60%</div>
+          </div>
 
           <label class="switch">
             <input id="toggle-night" type="checkbox" />
