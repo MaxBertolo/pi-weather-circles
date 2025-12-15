@@ -1,18 +1,59 @@
-// π Weather Circles — GitHub Pages (no build tools)
-// Data: Open-Meteo (free, no API key)
-// Visual: Canvas 2D
+// π Weather Circles — clean restart (password + visible circles + audio + meteo + geo)
 
 const PI = Math.PI;
 
+// ---------------- Password gate ----------------
+const ACCESS_PASS = "MAX72!";
+
+const gate = document.getElementById("gate");
+const gatePass = document.getElementById("gate-pass");
+const gateBtn = document.getElementById("gate-btn");
+const gateErr = document.getElementById("gate-err");
+
+function normalizePass(s) {
+  return (s ?? "").trim().replace(/\s+/g, "").normalize("NFKC");
+}
+function unlockGate() {
+  const ok = normalizePass(gatePass.value) === normalizePass(ACCESS_PASS);
+  if (ok) {
+    gate.classList.add("hidden");
+    gateErr.textContent = "";
+    start(); // start animation only after unlock
+  } else {
+    gateErr.textContent = "Wrong password.";
+  }
+}
+gateBtn.addEventListener("click", unlockGate);
+gatePass.addEventListener("keydown", (e) => { if (e.key === "Enter") unlockGate(); });
+
+// ---------------- DOM ----------------
 const canvas = document.getElementById("c");
 const ctx = canvas.getContext("2d", { alpha: false });
 
-const statusEl = document.getElementById("status");
+const hudTime  = document.getElementById("hud-time");
+const hudTemp  = document.getElementById("hud-temp");
+const hudCloud = document.getElementById("hud-cloud");
+const hudRain  = document.getElementById("hud-rain");
+const hudWind  = document.getElementById("hud-wind");
+const hudFog   = document.getElementById("hud-fog");
+
+const btnInfo = document.getElementById("btn-info");
+const panel = document.getElementById("panel");
+const panelText = document.getElementById("panel-text");
+
+const btnGeo = document.getElementById("btn-geo");
 const btnAudio = document.getElementById("btn-audio");
 const toggleNight = document.getElementById("toggle-night");
 
-let W = 0, H = 0, DPR = 1;
+// panel toggle
+btnInfo.addEventListener("click", () => {
+  const show = panel.classList.contains("hidden");
+  panel.classList.toggle("hidden", !show);
+  btnInfo.classList.toggle("active", show);
+});
 
+// ---------------- Canvas sizing ----------------
+let W = 0, H = 0, DPR = 1;
 function resize() {
   DPR = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
   W = Math.floor(window.innerWidth);
@@ -23,328 +64,64 @@ function resize() {
   canvas.style.height = H + "px";
   ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
 }
-window.addEventListener("resize", resize);
+window.addEventListener("resize", () => {
+  resize();
+  initCircles();
+});
 resize();
 
-// ----- Weather state -----
-const rome = { lat: 41.9028, lon: 12.4964 };
+// ---------------- Helpers ----------------
+const clamp = (x, a, b) => Math.max(a, Math.min(b, x));
+const lerp = (a, b, t) => a + (b - a) * t;
+function pad2(n){ return String(n).padStart(2,"0"); }
+function tempNorm(tC){ return clamp((tC - (-15)) / (50 - (-15)), 0, 1); } // -15..50 -> 0..1
 
-// Live state updated by fetch
+function isDayEffective() {
+  return toggleNight.checked ? false : weather.isDay;
+}
+
+// ---------------- Location + Weather ----------------
+const defaultLoc = { lat: 41.9028, lon: 12.4964, label: "Rome (fallback)" };
+const loc = { ...defaultLoc };
+
+try {
+  const saved = JSON.parse(localStorage.getItem("pi_weather_loc") || "null");
+  if (saved && typeof saved.lat === "number" && typeof saved.lon === "number") Object.assign(loc, saved);
+} catch {}
+
 const weather = {
   tempC: 15,
   isDay: true,
-  cloudCover: 20,      // %
-  fog: 0,              // 0..1 approx
-  rainMm: 0,           // mm/h
-  windMs: 1,           // m/s
-  windDirDeg: 0,       // degrees
-  code: 0,             // weather code
+  cloudCover: 30,
+  fog: 0,
+  rainMm: 0,
+  windMs: 1,
+  windDirDeg: 0,
   lastUpdate: 0
 };
 
-// ----- Season + seed -----
-function getSeasonKey(date = new Date()) {
-  const m = date.getMonth(); // 0-11
-  // Northern hemisphere: DJF winter, MAM spring, JJA summer, SON autumn
-  if (m === 11 || m <= 1) return "winter";
-  if (m >= 2 && m <= 4) return "spring";
-  if (m >= 5 && m <= 7) return "summer";
-  return "autumn";
-}
-
-function seasonSeed(seasonKey) {
-  // deterministic seasonal seed (stable within season, changes across seasons)
-  // Using π digits pattern + season mapping
-  const base = {
-    winter: 314159,
-    spring: 265358,
-    summer: 979323,
-    autumn: 846264
-  }[seasonKey] || 314159;
-  return base;
-}
-
-// Simple seeded PRNG (Mulberry32)
-function mulberry32(seed) {
-  let a = seed >>> 0;
-  return function() {
-    a |= 0; a = (a + 0x6D2B79F5) | 0;
-    let t = Math.imul(a ^ (a >>> 15), 1 | a);
-    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}
-
-// ----- Circles -----
-const N = 99;
-let circles = [];
-let rng = mulberry32(seasonSeed(getSeasonKey()));
-
-function initCircles() {
-  circles = [];
-  const season = getSeasonKey();
-  rng = mulberry32(seasonSeed(season));
-
-  for (let i = 0; i < N; i++) {
-    const u = rng();
-    const v = rng();
-
-    const r = lerp(4, 24, Math.pow(rng(), 1.8)); // many small, few larger
-    const x = u * W;
-    const y = v * H;
-
-    // Unique π-based phase offset
-    const phi = (i + 1) * PI * (1 + (rng() - 0.5) * 0.12);
-
-    circles.push({
-      id: i,
-      x, y,
-      r,
-      baseR: r,
-      phase: phi,
-      rot: rng() * 2 * PI,
-      spin: lerp(-0.8, 0.8, rng()),  // internal rotation factor
-      hueOffset: Math.floor(rng() * 40) - 20,
-      alpha: lerp(0.35, 0.85, rng()),
-      trail: [] // for visual logging
-    });
-  }
-}
-initCircles();
-
-// Update season seed at runtime (e.g. midnight crossing into new season)
-let currentSeason = getSeasonKey();
-
-// ----- Helpers -----
-function clamp(x, a, b) { return Math.max(a, Math.min(b, x)); }
-function lerp(a, b, t) { return a + (b - a) * t; }
-
-// Map temperature [-15..50] to [0..1]
-function tempNorm(tC) {
-  return clamp((tC - (-15)) / (50 - (-15)), 0, 1);
-}
-
-// Background: blu/grigio based on sun height proxy + fog
-function computeBackground() {
-  // Sun height proxy: use isDay + cloudCover as approximation
-  // If isDay: "higher sun" look = brighter blue; else darker.
-  // We do not calculate solar elevation here to keep it simple & free.
-  const day = weather.isDay ? 1 : 0;
-  const clouds = clamp(weather.cloudCover / 100, 0, 1);
-  const fog = clamp(weather.fog, 0, 1);
-
-  // Blue component stronger with day, weaker with clouds.
-  let blueT = day * (1 - 0.6 * clouds);
-
-  // Grey stronger with fog + clouds + night
-  let greyT = clamp(0.15 + 0.55 * fog + 0.35 * clouds + (1 - day) * 0.25, 0, 1);
-
-  // Blend between deep blue and blue-grey
-  const r = Math.floor(lerp(10, 80, greyT));
-  const g = Math.floor(lerp(16, 95, greyT));
-  const b = Math.floor(lerp(28, 150, greyT + blueT * 0.4));
-
-  return `rgb(${r},${g},${b})`;
-}
-
-// Circle color: warm if hot, cool if cold
-function circleColor(circle) {
-  const t = tempNorm(weather.tempC);
-  // cold ~ 200-240 hue (blue/cyan), hot ~ 10-50 hue (red/orange/yellow)
-  const hue = lerp(220, 30, t) + circle.hueOffset;
-
-  // season tweaks: summer brighter, winter more muted
-  const season = getSeasonKey();
-  const seasonSat = (season === "summer") ? 0.85 : (season === "winter") ? 0.55 : 0.7;
-  const sat = clamp(lerp(0.45, 0.9, seasonSat), 0.35, 0.95);
-
-  // Lightness: slightly higher when day
-  const light = clamp(lerp(0.35, 0.62, t) + (weather.isDay ? 0.06 : -0.04), 0.18, 0.78);
-
-  return `hsla(${hue.toFixed(0)}, ${(sat*100).toFixed(0)}%, ${(light*100).toFixed(0)}%, ${circle.alpha.toFixed(2)})`;
-}
-
-// Motion model:
-// Sun: slow circular in upper half + harmonic micro-motions
-// Rain: vertical downward speed proportional to rain
-// Wind: diagonal drift based on wind speed + direction
-function step(dt, nowMs) {
-  // check season change
-  const s = getSeasonKey();
-  if (s !== currentSeason) {
-    currentSeason = s;
-    initCircles();
-  }
-
-  // permanent night mode override
-  const nightPermanent = toggleNight.checked;
-  const isDay = nightPermanent ? false : weather.isDay;
-
-  const tN = tempNorm(weather.tempC);
-  const rain = clamp(weather.rainMm, 0, 30); // cap
-  const rainN = clamp(rain / 10, 0, 1);      // 0..1
-  const wind = clamp(weather.windMs, 0, 25);
-  const windN = clamp(wind / 12, 0, 1);
-
-  // Base speed: hotter -> slightly faster
-  const baseSpeed = lerp(10, 55, tN); // pixels/sec-ish scale
-
-  // Sun mode factor
-  const sunFactor = (isDay && rain < 0.2) ? 1 : 0;
-
-  // Rain factor
-  const rainFactor = rainN;
-
-  // Wind drift vector
-  const windDir = (weather.windDirDeg || 0) * PI / 180;
-  const wx = Math.cos(windDir) * windN;
-  const wy = Math.sin(windDir) * windN;
-
-  for (const c of circles) {
-    c.phase += dt * (PI * 0.15 + c.id * 0.0007); // π-linked phase advance
-    c.rot += dt * c.spin * (0.8 + 1.2 * tN);     // internal rotation
-
-    // Harmonic micro jitter (π-based)
-    const micro = 0.6 + 1.8 * (1 - rainN); // calmer when not raining
-    const hx = Math.sin(c.phase) * micro;
-    const hy = Math.cos(c.phase / PI) * micro;
-
-    // Sun behavior: gentle circular paths biased to upper area
-    if (sunFactor > 0) {
-      const rad = (18 + c.baseR * 1.3) * (0.6 + 0.6 * Math.sin(c.phase / (PI*2)));
-      c.x += (Math.cos(c.phase) * rad + hx) * dt;
-      c.y += (Math.sin(c.phase) * rad * 0.55 + hy) * dt;
-
-      // float slightly upward overall (staying upper half)
-      c.y -= dt * 6 * (0.3 + tN);
-
-      // pull toward upper half gently
-      const targetY = H * 0.35;
-      c.y += (targetY - c.y) * dt * 0.05;
-    }
-
-    // Rain behavior: vertical down, faster with rain
-    if (rainFactor > 0) {
-      const v = baseSpeed * (0.5 + 2.2 * rainFactor);
-      c.y += v * dt;
-      c.x += (hx * 0.4) * dt; // still a little organic
-    }
-
-    // Wind behavior: diagonal drift
-    if (windN > 0.05) {
-      const drift = baseSpeed * (0.2 + 1.2 * windN);
-      c.x += wx * drift * dt;
-      c.y += wy * drift * dt;
-    }
-
-    // If neither sun nor rain, just mild harmonic motion
-    if (sunFactor === 0 && rainFactor === 0) {
-      const calm = baseSpeed * 0.12;
-      c.x += (hx * calm) * dt;
-      c.y += (hy * calm) * dt;
-    }
-
-    // Wrap around edges
-    if (c.x < -c.r) c.x = W + c.r;
-    if (c.x > W + c.r) c.x = -c.r;
-    if (c.y < -c.r) c.y = H + c.r;
-    if (c.y > H + c.r) c.y = -c.r;
-
-    // Visual logging: store trail points (time passing)
-    const keep = 22; // trail length
-    c.trail.push({ x: c.x, y: c.y, t: nowMs });
-    if (c.trail.length > keep) c.trail.shift();
-  }
-}
-
-// ----- Rendering -----
-function draw(nowMs) {
-  const nightPermanent = toggleNight.checked;
-  const bg = computeBackground();
-
-  // Background fill
-  ctx.fillStyle = nightPermanent ? "rgb(8,10,14)" : bg;
-  ctx.fillRect(0, 0, W, H);
-
-  // Subtle time bar (visual logging of passing time)
-  // A thin timeline that moves every minute.
-  const minute = Math.floor(nowMs / 60000);
-  const xBar = (minute % 120) / 120 * W; // cycles
-  ctx.fillStyle = "rgba(255,255,255,0.06)";
-  ctx.fillRect(0, H - 12, W, 12);
-  ctx.fillStyle = "rgba(255,255,255,0.14)";
-  ctx.fillRect(xBar, H - 12, Math.max(2, W * 0.01), 12);
-
-  // Trails (time history)
-  for (const c of circles) {
-    const col = circleColor(c);
-    for (let i = 0; i < c.trail.length - 1; i++) {
-      const a = i / c.trail.length;
-      ctx.strokeStyle = col.replace(/[\d.]+\)$/, `${(0.10 * a).toFixed(3)})`);
-      ctx.lineWidth = 1;
-      ctx.beginPath();
-      ctx.moveTo(c.trail[i].x, c.trail[i].y);
-      ctx.lineTo(c.trail[i+1].x, c.trail[i+1].y);
-      ctx.stroke();
-    }
-  }
-
-  // Circles
-  for (const c of circles) {
-    // Slight pulsation with π
-    const pulse = 1 + 0.06 * Math.sin(c.phase / PI);
-
-    ctx.save();
-    ctx.translate(c.x, c.y);
-    ctx.rotate(c.rot);
-
-    // Fill
-    ctx.fillStyle = circleColor(c);
-    ctx.beginPath();
-    ctx.arc(0, 0, c.r * pulse, 0, 2 * PI);
-    ctx.fill();
-
-    // Minimal inner marker to show rotation
-    ctx.strokeStyle = "rgba(255,255,255,0.10)";
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.moveTo(0, 0);
-    ctx.lineTo(c.r * pulse, 0);
-    ctx.stroke();
-
-    ctx.restore();
-  }
-}
-
-// ----- Weather fetch (Open-Meteo) -----
 async function fetchWeather() {
-  // Using current_weather + hourly for cloudcover & visibility proxies
-  // Open-Meteo provides: temperature_2m, is_day, weathercode, windspeed_10m, winddirection_10m
-  // For cloud cover and fog, use hourly: cloudcover, visibility (fog proxy), precipitation
   const url =
     `https://api.open-meteo.com/v1/forecast` +
-    `?latitude=${rome.lat}&longitude=${rome.lon}` +
-    `&current=temperature_2m,is_day,weather_code,wind_speed_10m,wind_direction_10m` +
+    `?latitude=${loc.lat}&longitude=${loc.lon}` +
+    `&current=temperature_2m,is_day,wind_speed_10m,wind_direction_10m` +
     `&hourly=cloud_cover,visibility,precipitation` +
-    `&timezone=Europe/Rome`;
+    `&timezone=auto`;
 
   const res = await fetch(url, { cache: "no-store" });
   if (!res.ok) throw new Error(`Weather fetch failed: ${res.status}`);
   const data = await res.json();
 
   const cur = data.current;
-  const hourly = data.hourly;
+  const h = data.hourly;
 
-  // Find current hour index (same timezone already)
-  const nowISO = new Date().toISOString();
-  // fallback: pick last
-  let idx = (hourly?.time?.length || 1) - 1;
-  if (hourly?.time?.length) {
-    // choose closest hour
+  // closest hour index
+  let idx = (h?.time?.length || 1) - 1;
+  if (h?.time?.length) {
     let best = 0, bestDiff = Infinity;
-    for (let i = 0; i < hourly.time.length; i++) {
-      const t = new Date(hourly.time[i]).getTime();
-      const d = Math.abs(Date.now() - t);
+    for (let i = 0; i < h.time.length; i++) {
+      const tt = new Date(h.time[i]).getTime();
+      const d = Math.abs(Date.now() - tt);
       if (d < bestDiff) { bestDiff = d; best = i; }
     }
     idx = best;
@@ -352,111 +129,292 @@ async function fetchWeather() {
 
   weather.tempC = cur.temperature_2m;
   weather.isDay = !!cur.is_day;
-  weather.code = cur.weather_code;
-  weather.windMs = cur.wind_speed_10m / 3.6; // km/h -> m/s if needed; Open-Meteo is often km/h depending on config.
-  weather.windDirDeg = cur.wind_direction_10m;
 
-  const cc = hourly?.cloud_cover?.[idx];
-  weather.cloudCover = (typeof cc === "number") ? cc : 30;
+  // Open-Meteo: wind_speed_10m usually km/h -> m/s
+  weather.windMs = (cur.wind_speed_10m != null) ? (cur.wind_speed_10m / 3.6) : 1;
+  weather.windDirDeg = cur.wind_direction_10m || 0;
 
-  const precip = hourly?.precipitation?.[idx];
-  weather.rainMm = (typeof precip === "number") ? precip : 0;
+  weather.cloudCover = typeof h.cloud_cover?.[idx] === "number" ? h.cloud_cover[idx] : 30;
+  weather.rainMm = typeof h.precipitation?.[idx] === "number" ? h.precipitation[idx] : 0;
 
-  // Fog proxy via visibility: lower visibility -> more fog.
-  const vis = hourly?.visibility?.[idx];
-  if (typeof vis === "number") {
-    // visibility is in meters. Fog rises as visibility falls.
-    weather.fog = clamp(1 - (vis / 20000), 0, 1);
-  } else {
-    weather.fog = 0;
-  }
+  const vis = h.visibility?.[idx];
+  weather.fog = typeof vis === "number" ? clamp(1 - (vis / 20000), 0, 1) : 0;
 
   weather.lastUpdate = Date.now();
-
-  statusEl.textContent =
-    `Rome | ${weather.tempC.toFixed(1)}°C | ` +
-    `rain ${weather.rainMm.toFixed(1)} mm/h | wind ${weather.windMs.toFixed(1)} m/s | ` +
-    `cloud ${weather.cloudCover.toFixed(0)}% | fog ${(weather.fog*100).toFixed(0)}% | ` +
-    `${toggleNight.checked ? "Night(permanent)" : (weather.isDay ? "Day" : "Night")}`;
+  updateHud();
+  updatePanel();
 }
 
-async function scheduleWeather() {
-  try {
-    await fetchWeather();
-  } catch (e) {
-    statusEl.textContent = `Weather error (using last known values).`;
-    // keep running with previous values
-  } finally {
-    // refresh every 10 minutes
-    setTimeout(scheduleWeather, 10 * 60 * 1000);
+function scheduleWeather() {
+  fetchWeather().catch((e) => {
+    panelText.textContent = `Weather error: ${String(e.message || e)}`;
+  }).finally(() => setTimeout(scheduleWeather, 10 * 60 * 1000));
+}
+
+function useGeolocation() {
+  if (!("geolocation" in navigator)) return;
+  navigator.geolocation.getCurrentPosition(
+    (pos) => {
+      loc.lat = pos.coords.latitude;
+      loc.lon = pos.coords.longitude;
+      loc.label = "My location";
+      try { localStorage.setItem("pi_weather_loc", JSON.stringify(loc)); } catch {}
+      fetchWeather().catch(()=>{});
+    },
+    () => {},
+    { enableHighAccuracy: false, timeout: 8000, maximumAge: 10 * 60 * 1000 }
+  );
+}
+btnGeo.addEventListener("click", useGeolocation);
+
+// ---------------- HUD + panel ----------------
+function updateHud() {
+  const now = new Date();
+  hudTime.textContent = `${pad2(now.getHours())}:${pad2(now.getMinutes())}`;
+
+  hudTemp.textContent = `${weather.tempC.toFixed(0)}°`;
+  hudCloud.textContent = `${Math.round(weather.cloudCover)}%`;
+  hudRain.textContent = `${weather.rainMm.toFixed(1)}`;
+  hudWind.textContent = `${weather.windMs.toFixed(1)}`;
+  hudFog.textContent = `${Math.round(weather.fog * 100)}%`;
+}
+setInterval(updateHud, 10_000);
+
+function updatePanel() {
+  const day = isDayEffective() ? "Day" : "Night";
+  panelText.innerHTML = `
+    <div><b>Location:</b> ${loc.label} (${loc.lat.toFixed(3)}, ${loc.lon.toFixed(3)})</div>
+    <div><b>Time:</b> ${new Date().toLocaleString()}</div>
+    <div><b>Temp:</b> ${weather.tempC.toFixed(1)} °C</div>
+    <div><b>Cloud:</b> ${weather.cloudCover.toFixed(0)} %</div>
+    <div><b>Rain:</b> ${weather.rainMm.toFixed(1)} mm/h</div>
+    <div><b>Wind:</b> ${weather.windMs.toFixed(1)} m/s @ ${Math.round(weather.windDirDeg)}°</div>
+    <div><b>Fog:</b> ${(weather.fog * 100).toFixed(0)} % (proxy)</div>
+    <div><b>Mode:</b> ${day}</div>
+    <div><b>Audio:</b> ${audioCtx ? audioCtx.state : "off"}</div>
+  `;
+}
+
+// ---------------- Visual: 99 circles ----------------
+const N = 99;
+let circles = [];
+
+function initCircles() {
+  circles = [];
+  for (let i = 0; i < N; i++) {
+    circles.push({
+      x: Math.random() * W,
+      y: Math.random() * H,
+      r: 6 + Math.random() * 18,
+      phase: (i + 1) * PI,
+      spin: -0.8 + Math.random() * 1.6,
+      hue: Math.random() * 360,
+      a: 0.65 + Math.random() * 0.35,
+      trail: []
+    });
   }
 }
-scheduleWeather();
+initCircles();
 
-// ----- Audio (simple, sync with meteo) -----
-let audioCtx = null;
-let isAudioOn = false;
-let osc = null;
-let gain = null;
+function computeBackground() {
+  const day = isDayEffective() ? 1 : 0;
+  const clouds = clamp(weather.cloudCover / 100, 0, 1);
+  const fog = clamp(weather.fog, 0, 1);
 
-function startAudio() {
-  if (isAudioOn) return;
-  audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-  osc = audioCtx.createOscillator();
-  gain = audioCtx.createGain();
+  const blueT = day * (1 - 0.65 * clouds);
+  const greyT = clamp(0.12 + 0.62 * fog + 0.30 * clouds + (1 - day) * 0.34, 0, 1);
 
-  osc.type = "sine";
-  gain.gain.value = 0.0;
-
-  osc.connect(gain);
-  gain.connect(audioCtx.destination);
-  osc.start();
-
-  isAudioOn = true;
-  btnAudio.textContent = "Audio enabled";
+  const r = Math.floor(lerp(8, 92, greyT));
+  const g = Math.floor(lerp(12, 102, greyT));
+  const b = Math.floor(lerp(26, 165, greyT + blueT * 0.50));
+  return `rgb(${r},${g},${b})`;
 }
 
-btnAudio.addEventListener("click", () => {
-  startAudio();
-});
+function circleStroke(c) {
+  // warm/cool by temperature
+  const t = tempNorm(weather.tempC);
+  const baseHue = lerp(220, 25, t); // cold->blue, hot->orange
+  const hue = (baseHue + c.hue) % 360;
+  const light = isDayEffective() ? lerp(52, 72, t) : lerp(40, 58, t);
+  return `hsla(${hue.toFixed(0)}, 72%, ${light.toFixed(0)}%, ${c.a.toFixed(2)})`;
+}
 
-// Audio update: tempo/pitch driven by temperature + rain + wind
-function updateAudio(dt) {
-  if (!isAudioOn || !audioCtx) return;
-
+// motion: sun gentle / rain vertical / wind oblique
+function step(dt, nowMs) {
   const tN = tempNorm(weather.tempC);
   const rainN = clamp(weather.rainMm / 10, 0, 1);
   const windN = clamp(weather.windMs / 12, 0, 1);
 
-  // Base frequency: cold->lower, hot->higher (simple melodic behavior)
-  const baseFreq = lerp(140, 520, tN);
+  const baseSpeed = lerp(10, 55, tN);
+  const day = isDayEffective();
+  const sunMode = day && rainN < 0.02;
 
-  // Add turbulence on storms/wind
-  const wobble = (rainN * 24) + (windN * 18);
+  const windDir = (weather.windDirDeg || 0) * PI / 180;
+  const wx = Math.cos(windDir) * windN;
+  const wy = Math.sin(windDir) * windN;
 
-  // “tempo” as amplitude pulsing speed (not a true BPM sequencer)
-  const pulseHz = lerp(0.4, 2.0, tN) + rainN * 1.2;
+  for (const c of circles) {
+    c.phase += dt * (PI * 0.18 + c.spin * 0.01);
 
-  const time = audioCtx.currentTime;
-  const f = baseFreq + Math.sin(time * (PI * 0.5)) * wobble;
+    // harmonic micro motion
+    const hx = Math.sin(c.phase) * (0.8 + 1.6 * (1 - rainN));
+    const hy = Math.cos(c.phase / PI) * (0.8 + 1.6 * (1 - rainN));
 
-  osc.frequency.setTargetAtTime(f, time, 0.02);
+    if (sunMode) {
+      c.x += (Math.cos(c.phase) * 18 + hx) * dt;
+      c.y += (Math.sin(c.phase) * 10 + hy) * dt;
+      c.y -= dt * (6 + 10 * tN);
+      c.y += (H * 0.35 - c.y) * dt * 0.05;
+    } else {
+      // rain vertical
+      c.y += baseSpeed * (0.3 + 2.0 * rainN) * dt;
+      c.x += hx * dt * 2;
+    }
 
-  // night mode -> quieter
-  const night = toggleNight.checked || !weather.isDay;
-  const targetGain = night ? 0.015 : 0.03;
+    // wind drift
+    c.x += wx * baseSpeed * (0.4 + 1.2 * windN) * dt;
+    c.y += wy * baseSpeed * (0.4 + 1.2 * windN) * dt;
 
-  // rain -> more intense (but keep subtle)
-  const intensity = clamp(targetGain + rainN * 0.02, 0.0, 0.06);
+    // wrap
+    if (c.x < -c.r) c.x = W + c.r;
+    if (c.x > W + c.r) c.x = -c.r;
+    if (c.y < -c.r) c.y = H + c.r;
+    if (c.y > H + c.r) c.y = -c.r;
 
-  // pulse
-  const pulsed = intensity * (0.6 + 0.4 * (0.5 + 0.5 * Math.sin(time * 2 * PI * pulseHz)));
-
-  gain.gain.setTargetAtTime(pulsed, time, 0.04);
+    // trail
+    c.trail.push({ x: c.x, y: c.y });
+    if (c.trail.length > 14) c.trail.shift();
+  }
 }
 
-// ----- Main loop -----
+function draw(nowMs) {
+  ctx.fillStyle = toggleNight.checked ? "rgb(8,10,14)" : computeBackground();
+  ctx.fillRect(0, 0, W, H);
+
+  ctx.lineWidth = 3; // very visible
+
+  for (const c of circles) {
+    // trails
+    const col = circleStroke(c);
+    for (let i = 0; i < c.trail.length - 1; i++) {
+      const a = i / c.trail.length;
+      ctx.strokeStyle = col.replace(/[\d.]+\)$/, `${(0.12 * a).toFixed(3)})`);
+      ctx.beginPath();
+      ctx.moveTo(c.trail[i].x, c.trail[i].y);
+      ctx.lineTo(c.trail[i+1].x, c.trail[i+1].y);
+      ctx.stroke();
+    }
+
+    // circle (stroke only)
+    ctx.strokeStyle = col;
+    ctx.beginPath();
+    ctx.arc(c.x, c.y, c.r, 0, 2 * PI);
+    ctx.stroke();
+  }
+
+  // tiny debug stamp (to prove JS running)
+  ctx.fillStyle = "rgba(255,255,255,0.65)";
+  ctx.font = "12px Arial";
+  ctx.fillText("RUNNING", 12, H - 16);
+}
+
+// ---------------- Audio (harmonic chord) ----------------
+let audioCtx = null;
+let master = null;
+let oscs = [];
+let nextPulseAt = 0;
+
+function startAudio() {
+  if (audioCtx) return;
+  audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+
+  master = audioCtx.createGain();
+  master.gain.value = 0.03;
+  master.connect(audioCtx.destination);
+
+  // triad (C minor) - will be modulated by temperature
+  const freqs = [261.63, 311.13, 392.00];
+  for (const f of freqs) {
+    const o = audioCtx.createOscillator();
+    const g = audioCtx.createGain();
+    o.type = "sine";
+    o.frequency.value = f;
+    g.gain.value = 0.0;
+    o.connect(g);
+    g.connect(master);
+    o.start();
+    oscs.push({ o, g });
+  }
+
+  btnAudio.textContent = "Audio enabled";
+  updatePanel();
+}
+
+async function resumeAudio() {
+  if (!audioCtx) return;
+  if (audioCtx.state === "suspended") {
+    try { await audioCtx.resume(); } catch {}
+  }
+}
+
+btnAudio.addEventListener("click", async () => {
+  startAudio();
+  await resumeAudio();
+});
+
+document.addEventListener("pointerdown", () => {
+  resumeAudio();
+}, { passive: true });
+
+function updateAudio(nowMs) {
+  if (!audioCtx) return;
+
+  const tN = tempNorm(weather.tempC);
+  const rainN = clamp(weather.rainMm / 10, 0, 1);
+
+  // pitch shift by temperature
+  const base = lerp(150, 420, tN);
+  const intervals = [0, 3, 7]; // minor chord
+  for (let i = 0; i < oscs.length; i++) {
+    const hz = base * Math.pow(2, intervals[i] / 12);
+    oscs[i].o.frequency.setTargetAtTime(hz, audioCtx.currentTime, 0.05);
+  }
+
+  // pulse rhythm by meteo
+  const bpm = lerp(40, 110, clamp(tN + rainN * 0.6, 0, 1));
+  const intervalMs = 60000 / bpm;
+
+  if (nowMs >= nextPulseAt) {
+    nextPulseAt = nowMs + intervalMs;
+
+    const t = audioCtx.currentTime;
+    const vel = lerp(0.015, 0.05, clamp(tN + rainN * 0.5, 0, 1));
+
+    for (const { g } of oscs) {
+      g.gain.cancelScheduledValues(t);
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.exponentialRampToValueAtTime(vel, t + 0.04);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + 0.8);
+    }
+  }
+}
+
+// ---------------- Main loop control ----------------
+let running = false;
 let last = performance.now();
+
+function start() {
+  if (running) return;
+  running = true;
+
+  // start meteo fetch loop
+  fetchWeather().catch(()=>{});
+  scheduleWeather();
+
+  // main render loop
+  last = performance.now();
+  requestAnimationFrame(loop);
+}
 
 function loop(now) {
   const dt = clamp((now - last) / 1000, 0, 0.05);
@@ -464,14 +422,11 @@ function loop(now) {
 
   step(dt, now);
   draw(now);
-  updateAudio(dt);
+  updateHud();
+  updateAudio(now);
 
   requestAnimationFrame(loop);
 }
-requestAnimationFrame(loop);
 
-// Keep status line updated when toggling night
-toggleNight.addEventListener("change", () => {
-  // update status immediately
-  statusEl.textContent = statusEl.textContent.replace(/(Night\(permanent\)|Day|Night)/g, toggleNight.checked ? "Night(permanent)" : (weather.isDay ? "Day" : "Night"));
-});
+// toggle night affects immediately
+toggleNight.addEventListener("change", () => updatePanel());
