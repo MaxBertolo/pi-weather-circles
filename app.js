@@ -1,13 +1,11 @@
 // π Weather Circles — Vivaldi concept (classical-style generative)
-// - Day background: PURE WHITE with sun, very light greys for clouds/fog, strong grey for storms
-// - Trigger circle: PINK FILLED (no border) opens a fullscreen console (EXIT returns)
-// - Circles size: 3x diameter (radius * 3)
-// - Colors: warm palette
-// - Audio: 6-voice "strings" pad + continuo "harpsichord" + violin melody + counterpoint
-// - Timbre: muffled by fog/clouds (low-pass)
-// - Wind: tremolo modulation
-// - Rain: pizzicato / impulses density
-// - Alarm: circles vibrate + siren/trumpet
+// VISUAL CHANGES REQUESTED:
+// - N circles = 777
+// - All circles except trigger: DAY = BLACK stroke, NIGHT = WHITE stroke
+// - Circles bigger than before (was *3 radius, now *4.5 radius)
+// - Trigger circle: PINK filled, NO border
+// PERFORMANCE:
+// - Batch-stroke all non-trigger circles in a single path
 
 const canvas = document.getElementById("c");
 const ctx = canvas.getContext("2d", { alpha: false });
@@ -66,7 +64,6 @@ const PI = Math.PI;
 const clamp = (x, a, b) => Math.max(a, Math.min(b, x));
 const lerp = (a, b, t) => a + (b - a) * t;
 const pad2 = (n) => String(n).padStart(2, "0");
-
 function tempNorm(tC) { return clamp((tC - (-15)) / (50 - (-15)), 0, 1); }
 
 function seasonKey(d = new Date()) {
@@ -151,7 +148,7 @@ function updateConsoleValues() {
 setInterval(updateConsoleValues, 10_000);
 
 // ---------- Circles + PINK trigger circle ----------
-const N = 99;
+const N = 777;
 let circles = [];
 let infoCircle = null;
 
@@ -160,8 +157,8 @@ function initCircles() {
 
   circles = [];
   for (let i = 0; i < N; i++) {
-    const baseR = 8 + rng() * 16;          // old radius range
-    const r = baseR * 3;                  // NEW: diameter 3x => radius * 3
+    const baseR = 8 + rng() * 16;     // old radius range
+    const r = baseR * 4.5;           // BIGGER than previous (was *3)
     circles.push({
       x: rng() * W,
       y: rng() * H,
@@ -175,9 +172,7 @@ function initCircles() {
 
   infoCircle = circles[Math.floor(rng() * circles.length)];
   infoCircle.isInfo = true;
-
-  // make it even more tappable/visible
-  infoCircle.r = Math.max(infoCircle.r, 60);
+  infoCircle.r = Math.max(infoCircle.r, 72); // always easy to find
 }
 initCircles();
 
@@ -194,13 +189,13 @@ canvas.addEventListener("pointerdown", (e) => {
   const dy = y - infoCircle.y;
   const d = Math.sqrt(dx*dx + dy*dy);
 
-  if (d <= infoCircle.r + 16) {
+  if (d <= infoCircle.r + 18) {
     updateConsoleValues();
     openConsole();
   }
 }, { passive: true });
 
-// ---------- Background + stroke color ----------
+// ---------- Background ----------
 function bg() {
   const day = isDayEffective();
 
@@ -209,50 +204,26 @@ function bg() {
   const rainN = clamp(weather.rainMm / 10, 0, 1);
   const windN = clamp(weather.windMs / 14, 0, 1);
 
-  // "Sun" condition: day + clear air + little cloud + no rain
   const sunny = day && clouds < 0.25 && fog < 0.25 && rainN < 0.03;
-
-  // Storm intensity: rain + wind + clouds
   const stormN = clamp(rainN * 0.75 + windN * 0.25 + clouds * 0.35, 0, 1);
 
   if (!day) {
-    // night stays dark (slightly lifted by cloud/fog)
     const lift = clamp(clouds * 0.35 + fog * 0.55, 0, 1);
     const v = Math.floor(lerp(10, 55, lift));
     return `rgb(${v},${v},${v})`;
   }
 
-  // day:
-  if (sunny) {
-    // requested: white when it's day AND sunny
-    return `rgb(255,255,255)`;
-  }
+  if (sunny) return `rgb(255,255,255)`;
 
   if (stormN > 0.65) {
-    // strong storm => clearly grey (but not night)
     const t = clamp((stormN - 0.65) / 0.35, 0, 1);
     const v = Math.floor(lerp(210, 140, t));
     return `rgb(${v},${v},${v})`;
   }
 
-  // cloudy/foggy => VERY LIGHT greys
-  // fog slightly stronger influence on "milky" grey
   const lightGreyMix = clamp(clouds * 0.65 + fog * 0.85, 0, 1);
-  const v = Math.floor(lerp(255, 235, lightGreyMix)); // very light grey range
+  const v = Math.floor(lerp(255, 235, lightGreyMix));
   return `rgb(${v},${v},${v})`;
-}
-
-function strokeColor(c) {
-  // requested: warm colors always (temp still slightly shifts warmth)
-  const t = tempNorm(weather.tempC);
-
-  // warm palette: yellow/orange/red
-  const baseHue = lerp(38, 6, t);         // 38° (gold) -> 6° (red-orange)
-  const hue = (baseHue + (c.h * 0.22)) % 360; // small variation but stays warm
-  const sat = 88;
-  const light = isDayEffective() ? lerp(52, 68, 0.5 + t * 0.5) : lerp(42, 58, 0.5 + t * 0.5);
-
-  return `hsla(${hue.toFixed(0)},${sat}%,${light.toFixed(0)}%,0.92)`;
 }
 
 // ---------- Alarm state + vibration ----------
@@ -307,25 +278,31 @@ function step(dt, ms) {
   if (alarmRinging && ms >= alarmEndsAt) stopAlarm();
 }
 
+// ---------- Draw (batched stroke for performance) ----------
 function draw(ms) {
   ctx.fillStyle = bg();
   ctx.fillRect(0, 0, W, H);
 
+  const day = isDayEffective();
+  ctx.strokeStyle = day ? "rgba(0,0,0,0.88)" : "rgba(255,255,255,0.92)";
+  ctx.lineWidth = 2.6;
+
+  // draw all non-trigger circles in one stroke
+  ctx.beginPath();
   for (const c of circles) {
-    if (c.isInfo) {
-      // PINK filled trigger circle — NO BORDER (requested)
-      const pulse = 0.10 + 0.08 * Math.sin(ms / 850);
-      ctx.fillStyle = `rgba(255, 70, 170, ${0.90 + pulse})`;
-      ctx.beginPath();
-      ctx.arc(c.x, c.y, c.r, 0, PI * 2);
-      ctx.fill();
-    } else {
-      ctx.strokeStyle = strokeColor(c);
-      ctx.lineWidth = 3;
-      ctx.beginPath();
-      ctx.arc(c.x, c.y, c.r, 0, PI * 2);
-      ctx.stroke();
-    }
+    if (c.isInfo) continue;
+    ctx.moveTo(c.x + c.r, c.y);
+    ctx.arc(c.x, c.y, c.r, 0, PI * 2);
+  }
+  ctx.stroke();
+
+  // trigger circle: pink filled, no border
+  if (infoCircle) {
+    const pulse = 0.10 + 0.08 * Math.sin(ms / 850);
+    ctx.fillStyle = `rgba(255, 70, 170, ${0.90 + pulse})`;
+    ctx.beginPath();
+    ctx.arc(infoCircle.x, infoCircle.y, infoCircle.r, 0, PI * 2);
+    ctx.fill();
   }
 }
 
@@ -339,7 +316,7 @@ let compressor = null;
 let tremoloGain = null;
 let master = null;
 
-let pad = [];             // 6 voices {osc,g}
+let pad = [];
 let harpBus = null;
 let melodyBus = null;
 let rainBus = null;
@@ -349,19 +326,16 @@ let windLFODepth = null;
 
 let noiseBuffer = null;
 
-// Scheduling state
 let nextBarAtMs = 0;
 let barIndex = 0;
 let nextHarpAtMs = 0;
 let nextMelodyAtMs = 0;
 let nextRainAtMs = 0;
 
-// Harmony state
 let currentRootHz = 220;
 let currentChordSemis = [0, 4, 7, 11, 14, 17];
 let alarmNode = null;
 
-// Modes (semitones)
 const MODES = {
   spring:  [0, 2, 4, 5, 7, 9, 11],
   summer:  [0, 2, 4, 5, 7, 9, 10],
@@ -369,7 +343,6 @@ const MODES = {
   winter:  [0, 2, 3, 5, 7, 8, 10]
 };
 
-// Functional progressions
 const PROGRESSION = {
   spring:  [0, 3, 4, 0],
   summer:  [0, 4, 3, 0],
@@ -431,15 +404,12 @@ function ensureAudio() {
   for (let i = 0; i < 6; i++) {
     const osc = audioCtx.createOscillator();
     const g = audioCtx.createGain();
-
     osc.type = (i % 2 === 0) ? "triangle" : "sawtooth";
     osc.detune.value = (i - 2.5) * 6;
-
     g.gain.value = 0.0001;
     osc.connect(g);
     g.connect(timbreFilter);
     osc.start();
-
     pad.push({ osc, g });
   }
 
@@ -466,7 +436,6 @@ function ensureAudio() {
 
 btnAudio.addEventListener("click", ensureAudio);
 
-// resume helper (mobile)
 document.addEventListener("pointerdown", async () => {
   if (audioCtx && audioCtx.state === "suspended") {
     try { await audioCtx.resume(); } catch {}
@@ -536,7 +505,6 @@ function setPadChord(rootHz, semis) {
     pad[i].osc.frequency.setTargetAtTime(hz, t, 0.06);
   }
 }
-
 function padOn(level) {
   const t = audioCtx.currentTime;
   for (const v of pad) {
@@ -593,10 +561,9 @@ function violinNote(freq, when, dur, vel, vibrato = 0.0) {
   g.gain.linearRampToValueAtTime(vel, when + 0.03);
   g.gain.exponentialRampToValueAtTime(0.0001, when + dur);
 
-  let lfo = null, lfoG = null;
   if (vibrato > 0.0001) {
-    lfo = audioCtx.createOscillator();
-    lfoG = audioCtx.createGain();
+    const lfo = audioCtx.createOscillator();
+    const lfoG = audioCtx.createGain();
     lfo.type = "sine";
     lfo.frequency.value = 5.4 + Math.random()*1.2;
     lfoG.gain.value = vibrato;
@@ -617,20 +584,16 @@ function violinNote(freq, when, dur, vel, vibrato = 0.0) {
 function playPhrase(rootHz, mode, degrees, startTime, stepDur, vel, ornament = false) {
   for (let i = 0; i < degrees.length; i++) {
     const d = degrees[i];
-    if (d === null || d === undefined) continue;
-
     const when = startTime + i * stepDur;
     const semi = degToSemitone(mode, d) + 12;
     const freq = rootHz * Math.pow(2, semi / 12);
 
     const dur = stepDur * 0.95;
     const vib = ornament ? (6 + Math.random()*8) : 0;
-
     violinNote(freq, when, dur, vel, vib);
 
     if (ornament && i % 4 === 0) {
-      const semi2 = semi + 1;
-      const f2 = rootHz * Math.pow(2, semi2 / 12);
+      const f2 = rootHz * Math.pow(2, (semi + 1) / 12);
       violinNote(f2, when + stepDur * 0.25, stepDur * 0.30, vel * 0.55, vib * 0.7);
     }
   }
@@ -674,7 +637,6 @@ function rainPizz(freq, when, intensity) {
   o.stop(when + 0.14);
 }
 
-// ===================== Music scheduler =====================
 function updateMusic(ms) {
   if (!audioCtx || alarmRinging) return;
 
@@ -710,7 +672,6 @@ function updateMusic(ms) {
     const triadRootDeg = prog[barIndex % prog.length];
     currentChordSemis = buildChordSemis(mode, triadRootDeg, season);
     setPadChord(rootHz, currentChordSemis);
-
     nextBarAtMs += barMs;
     barIndex++;
   }
@@ -724,16 +685,13 @@ function updateMusic(ms) {
     const semi = currentChordSemis[idx % currentChordSemis.length];
 
     const f = rootHz * Math.pow(2, (semi - 12) / 12);
-    const when = audioCtx.currentTime + 0.02;
-
-    harpPluck(f, when, lerp(0.05, 0.13, clamp(0.35 + rainN, 0, 1)));
+    harpPluck(f, audioCtx.currentTime + 0.02, lerp(0.05, 0.13, clamp(0.35 + rainN, 0, 1)));
     nextHarpAtMs += harpStepMs;
   }
 
   const phrase = MELODY[season];
   const stepDur = (beatMs / 1000) * lerp(0.55, 0.35, clamp(tN + rainN * 0.6, 0, 1));
-  const phraseSec = phrase.length * stepDur;
-  const phraseMs = phraseSec * 1000;
+  const phraseMs = phrase.length * stepDur * 1000;
 
   while (ms >= nextMelodyAtMs) {
     const start = audioCtx.currentTime + 0.05;
@@ -757,7 +715,7 @@ function updateMusic(ms) {
     while (ms >= nextRainAtMs) {
       const when = audioCtx.currentTime + 0.02;
       const pick = currentChordSemis[Math.floor(Math.random() * currentChordSemis.length)];
-      const f = rootHz * Math.pow(2, (pick) / 12);
+      const f = rootHz * Math.pow(2, pick / 12);
       const intensity = clamp(0.35 + rainN * 0.85, 0.35, 1.0);
 
       if (Math.random() < lerp(0.35, 0.85, rainN)) rainClick(when, intensity);
@@ -797,10 +755,8 @@ loadAlarm();
 function startAlarm(durationMs = 30000) {
   ensureAudio();
   padOff();
-
   alarmRinging = true;
   alarmEndsAt = performance.now() + durationMs;
-
   if (alarmSound.value === "siren") playSiren(durationMs);
   else playTrumpet(durationMs);
 }
@@ -808,10 +764,7 @@ function stopAlarm() {
   alarmRinging = false;
   alarmEndsAt = 0;
   if (alarmNode) { try { alarmNode.stop(); } catch {} alarmNode = null; }
-  nextBarAtMs = 0;
-  nextHarpAtMs = 0;
-  nextMelodyAtMs = 0;
-  nextRainAtMs = 0;
+  nextBarAtMs = 0; nextHarpAtMs = 0; nextMelodyAtMs = 0; nextRainAtMs = 0;
 }
 
 alarmTest.onclick = () => startAlarm(8000);
@@ -903,9 +856,7 @@ function loop(ms) {
   draw(ms);
   updateConsoleValues();
 
-  if (audioCtx && audioCtx.state !== "closed") {
-    updateMusic(ms);
-  }
+  if (audioCtx && audioCtx.state !== "closed") updateMusic(ms);
 
   requestAnimationFrame(loop);
 }
