@@ -1,6 +1,7 @@
 // π Weather Circles — Artwork + Fullscreen console via WHITE circle (no HUD)
 // Rich music: 6-voice pad + 2-voice arpeggio, timbre muffled by fog/clouds
 // Alarm: vibrate circles + siren/trumpet
+// Background: DAY = WHITE -> GREY by clouds/fog (NO BLUE), NIGHT = dark
 
 const canvas = document.getElementById("c");
 const ctx = canvas.getContext("2d", { alpha: false });
@@ -36,7 +37,7 @@ function closeConsole() {
 }
 btnExit.addEventListener("click", closeConsole);
 
-// clicking outside the card closes (optional)
+// click outside the card closes (optional)
 overlay.addEventListener("pointerdown", (e) => {
   if (e.target === overlay) closeConsole();
 }, { passive: true });
@@ -61,6 +62,7 @@ const PI = Math.PI;
 const clamp = (x, a, b) => Math.max(a, Math.min(b, x));
 const lerp = (a, b, t) => a + (b - a) * t;
 const pad2 = (n) => String(n).padStart(2, "0");
+
 function tempNorm(tC) { return clamp((tC - (-15)) / (50 - (-15)), 0, 1); }
 
 function seasonKey(d = new Date()) {
@@ -85,7 +87,7 @@ function seasonSeed(sk) {
   return ({ winter: 314159, spring: 265358, summer: 979323, autumn: 846264 }[sk] || 314159);
 }
 
-function isDayEffective(){ return toggleNight.checked ? false : weather.isDay; }
+function isDayEffective() { return toggleNight.checked ? false : weather.isDay; }
 
 // ---------- Weather ----------
 const weather = {
@@ -133,7 +135,7 @@ fetchWeather().catch(()=>{});
 setInterval(() => fetchWeather().catch(()=>{}), 10 * 60 * 1000);
 
 // ---------- Console values ----------
-function updateConsoleValues(){
+function updateConsoleValues() {
   const now = new Date();
   ovTime.textContent = `${pad2(now.getHours())}:${pad2(now.getMinutes())}`;
 
@@ -170,9 +172,8 @@ function initCircles() {
 }
 initCircles();
 
-// click/tap white circle -> open console
+// tap white circle -> open console
 canvas.addEventListener("pointerdown", (e) => {
-  // if console already open, ignore canvas taps
   if (!overlay.classList.contains("hidden")) return;
   if (!infoCircle) return;
 
@@ -192,17 +193,22 @@ canvas.addEventListener("pointerdown", (e) => {
 
 // ---------- Background + stroke color ----------
 function bg() {
-  const day = isDayEffective() ? 1 : 0;
+  const isDay = isDayEffective();
   const clouds = clamp(weather.cloudCover / 100, 0, 1);
   const fog = clamp(weather.fog, 0, 1);
 
-  const greyT = clamp(0.10 + 0.65 * fog + 0.25 * clouds + (1 - day) * 0.35, 0, 1);
-  const blueT = day * (1 - 0.6 * clouds);
+  // White -> Grey factor (fog weighs more than clouds)
+  const greyMix = clamp(clouds * 0.6 + fog * 0.9, 0, 1);
 
-  const r = Math.floor(lerp(8, 92, greyT));
-  const g = Math.floor(lerp(12, 102, greyT));
-  const b = Math.floor(lerp(26, 170, greyT + 0.5 * blueT));
-  return `rgb(${r},${g},${b})`;
+  if (isDay) {
+    // DAY: pure white -> soft grey
+    const v = Math.floor(lerp(255, 165, greyMix));
+    return `rgb(${v},${v},${v})`;
+  } else {
+    // NIGHT: dark -> slightly lighter with clouds/fog
+    const v = Math.floor(lerp(18, 55, greyMix));
+    return `rgb(${v},${v},${Math.min(255, v + 6)})`;
+  }
 }
 
 function strokeColor(c) {
@@ -629,6 +635,5 @@ function loop(ms) {
 }
 requestAnimationFrame(loop);
 
-// keep console values coherent
 toggleNight.onchange = () => updateConsoleValues();
 updateConsoleValues();
