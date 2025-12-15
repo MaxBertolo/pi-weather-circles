@@ -1,9 +1,10 @@
 // π Weather Art — 3 modes: circles / splash / diamonds
 // - same background, weather, audio, alarm, menu
 // - pink dot always present; opens menu; bounces; rotates slower
-// UPDATE:
-// - Diamonds palette matched to your screenshot background (excluding text/logo).
-// - Splash: stronger droplets (teardrops) in heavy rain, tilted by wind.
+// UPDATE (this version):
+// - Tap bottom-right corner => open mode picker (CERCHI/SPLASH/DIAMANTI)
+// - Bottom-left label shows current mode
+// - Bottom-right shows signature "MB" in italic
 
 const canvas = document.getElementById("c");
 const ctx = canvas.getContext("2d", { alpha: false });
@@ -74,11 +75,10 @@ function windVec() {
   return { wx: Math.cos(dir) * windN, wy: Math.sin(dir) * windN, windN, dir };
 }
 function rainAngleForDraw() {
-  // rain direction = downward + wind tilt
   const { wx, wy } = windVec();
   const dx = wx * 0.9;
   const dy = 1.0 + wy * 0.7;
-  return Math.atan2(dy, dx); // angle of rain "flow"
+  return Math.atan2(dy, dx);
 }
 
 // ---------- Overlays ----------
@@ -94,6 +94,18 @@ btnExit.addEventListener("click", closeConsole);
 overlay.addEventListener("pointerdown", (e) => {
   if (e.target === overlay) closeConsole();
 }, { passive: true });
+
+function showModePicker() {
+  modePicker.classList.remove("hidden");
+  modePicker.setAttribute("aria-hidden", "false");
+}
+function hideModePicker() {
+  modePicker.classList.add("hidden");
+  modePicker.setAttribute("aria-hidden", "true");
+}
+function isModePickerOpen() {
+  return !modePicker.classList.contains("hidden");
+}
 
 // ---------- Resize ----------
 let W = 0, H = 0, DPR = 1;
@@ -210,16 +222,13 @@ function saveMode(m) {
   artModeSel.value = m;
   try { localStorage.setItem("pi_mode", m); } catch {}
 }
-
-function showModePicker() {
-  modePicker.classList.remove("hidden");
-  modePicker.setAttribute("aria-hidden", "false");
-}
-function hideModePicker() {
-  modePicker.classList.add("hidden");
-  modePicker.setAttribute("aria-hidden", "true");
+function modeLabel(mode) {
+  if (mode === "circles") return "CERCHI";
+  if (mode === "splash") return "SPLASH";
+  return "DIAMANTI";
 }
 
+// picker click handlers
 modePicker.addEventListener("click", (e) => {
   const btn = e.target.closest("[data-mode]");
   if (!btn) return;
@@ -246,24 +255,14 @@ artModeSel.addEventListener("change", () => {
 let infoDot = null;
 
 // ---------- Shapes per mode ----------
-let circles = [];   // circles mode
-let splashes = [];  // splash mode
-let diamonds = [];  // diamonds mode
+let circles = [];
+let splashes = [];
+let diamonds = [];
 
-// ✅ Diamonds palette matched to your screenshot (background polygons)
+// Diamonds palette matched to screenshot background
 const DIAMOND_PALETTE = [
-  "#BA5900", // deep orange/brown
-  "#FF8100", // orange
-  "#088DEF", // bright cyan-blue
-  "#0B24C5", // deep blue
-  "#7B1DEF", // violet
-  "#62027D", // deep purple
-  "#D245D3", // magenta
-  "#AE048F", // purple-magenta
-  "#FA01A9", // hot pink
-  "#E40674", // pink/red
-  "#CC021C", // red
-  "#F17677"  // coral
+  "#BA5900", "#FF8100", "#088DEF", "#0B24C5", "#7B1DEF", "#62027D",
+  "#D245D3", "#AE048F", "#FA01A9", "#E40674", "#CC021C", "#F17677"
 ];
 
 function initArt(mode) {
@@ -272,7 +271,6 @@ function initArt(mode) {
   splashes = [];
   diamonds = [];
 
-  // keep pink dot always (same)
   infoDot = {
     x: rng() * W,
     y: rng() * H,
@@ -303,8 +301,6 @@ function initArt(mode) {
         r,
         p: (i + 1) * PI,
         s: lerp(0.92, 1.08, rng()),
-        h: rng() * 360,
-
         squashPhase: rng() * TAU,
         squashSpeed: 0.6 + rng(),
         squashBase: 0.03 + rng() * 0.05,
@@ -324,8 +320,6 @@ function initArt(mode) {
       const points = Math.floor(lerp(7, 12, rng()));
       const amps = Array.from({ length: points }, () => lerp(0.15, 0.55, rng()));
       const phases = Array.from({ length: points }, () => rng() * TAU);
-
-      // deterministic "droplet seeds"
       const dropSeeds = Array.from({ length: 10 }, () => rng() * TAU);
 
       splashes.push({
@@ -367,23 +361,38 @@ function initArt(mode) {
   }
 }
 
-// initial mode logic
+// initial
 loadMode();
 showModePicker();
+initArt(currentMode);
 
-// pink dot click -> open menu
+// ---------- Tap bottom-right to reopen picker ----------
+function hitBottomRight(x, y) {
+  const zone = Math.max(72, Math.min(120, Math.min(W, H) * 0.12));
+  return (x >= W - zone && y >= H - zone);
+}
+
+// pink dot click -> menu, bottom-right -> picker
 canvas.addEventListener("pointerdown", (e) => {
+  // if picker open or menu open, do nothing here
   if (!overlay.classList.contains("hidden")) return;
-  if (!infoDot) return;
+  if (isModePickerOpen()) return;
 
   const rect = canvas.getBoundingClientRect();
   const x = e.clientX - rect.left;
   const y = e.clientY - rect.top;
 
+  // bottom-right hot corner => mode picker
+  if (hitBottomRight(x, y)) {
+    showModePicker();
+    return;
+  }
+
+  // pink dot => menu
+  if (!infoDot) return;
   const dx = x - infoDot.x;
   const dy = y - infoDot.y;
   const d = Math.sqrt(dx*dx + dy*dy);
-
   if (d <= infoDot.r + 40) {
     updateConsoleValues();
     openConsole();
@@ -401,11 +410,9 @@ function step(dt, ms) {
   const { wx, wy, windN } = windVec();
 
   const base = lerp(14, 60, tN);
-
   const vibr = alarmRinging ? (3.5 + 6.0 * rainN) : 0;
   const squashWeather = clamp(0.15 + windN * 0.75 + rainN * 0.55, 0, 1);
 
-  // ---- Mode: circles ----
   if (currentMode === "circles") {
     for (const c of circles) {
       c.p += dt * (PI * 0.18 + c.s * 0.06);
@@ -446,7 +453,6 @@ function step(dt, ms) {
     }
   }
 
-  // ---- Mode: splash ----
   if (currentMode === "splash") {
     const expand = lerp(0.08, 0.55, rainN);
     const storm = clamp(rainN * 0.8 + windN * 0.35, 0, 1);
@@ -457,7 +463,6 @@ function step(dt, ms) {
 
       s.x += wx * base * s.drift * dt * 1.35;
       s.y += wy * base * s.drift * dt * 1.35;
-
       s.y += base * (0.12 + 0.55 * rainN) * dt * 0.35;
 
       if (vibr > 0) {
@@ -476,7 +481,6 @@ function step(dt, ms) {
     }
   }
 
-  // ---- Mode: diamonds ----
   if (currentMode === "diamonds") {
     const storm = clamp(rainN * 0.7 + windN * 0.4, 0, 1);
 
@@ -486,7 +490,6 @@ function step(dt, ms) {
 
       d.x += (d.vx + wx * base * 1.6) * dt;
       d.y += (d.vy + wy * base * 1.6) * dt;
-
       d.y += base * (0.05 + 0.45 * rainN) * dt;
 
       if (vibr > 0) {
@@ -502,7 +505,7 @@ function step(dt, ms) {
     }
   }
 
-  // ---- Pink dot (always bounce) ----
+  // Pink dot
   if (infoDot) {
     const speedWeather = lerp(0.85, 1.25, clamp(tN * 0.7 + rainN * 0.5 + windN * 0.2, 0, 1));
     const speed = infoDot.speedMul * speedWeather;
@@ -549,6 +552,7 @@ function draw(ms) {
   if (currentMode === "diamonds") drawDiamonds(ms);
 
   drawPink(ms);
+  drawFooter();
 }
 
 function drawCircles(ms) {
@@ -567,7 +571,6 @@ function drawCircles(ms) {
 }
 
 function drawSplashes(ms) {
-  // Always BLACK (as requested), slightly softer at night
   const alpha = isDayEffective() ? 0.92 : 0.78;
   ctx.fillStyle = `rgba(0,0,0,${alpha})`;
 
@@ -598,7 +601,6 @@ function drawSplashes(ms) {
     ctx.closePath();
     ctx.fill();
 
-    // ✅ Strong droplets in heavy rain: teardrops + small splats
     if (rainN > 0.35) {
       drawRainDropletsForSplash(s, ms, base, rainN, windN, ang);
     }
@@ -606,38 +608,30 @@ function drawSplashes(ms) {
 }
 
 function drawRainDropletsForSplash(s, ms, base, rainN, windN, ang) {
-  // number grows quickly with rain intensity
   const k = Math.floor(lerp(0, 10, clamp((rainN - 0.35) / 0.65, 0, 1)));
   if (k <= 0) return;
 
   ctx.save();
   ctx.translate(s.x, s.y);
-
-  // tilt with wind; add tiny time wobble
   ctx.rotate(ang + Math.sin(ms / 1800 + s.p) * 0.08);
 
   for (let i = 0; i < k; i++) {
     const seed = s.dropSeeds[i % s.dropSeeds.length];
     const t = (ms / 1000);
 
-    // distance from blob edge (animated)
     const orbit = base * lerp(0.65, 1.45, (Math.sin(seed + t * (0.7 + 1.6 * rainN)) * 0.5 + 0.5));
     const side = (i % 2 === 0) ? -1 : 1;
     const lateral = side * base * lerp(0.15, 0.65, (Math.sin(seed * 1.7 + t * 0.9) * 0.5 + 0.5));
 
-    // droplet size: bigger with rain, slightly with wind
     const r = lerp(2.5, 9.0, rainN) * lerp(0.9, 1.15, windN);
 
-    // place along "rain axis" (positive y after rotation)
     const x = lateral;
     const y = orbit;
 
-    // teardrop: ellipse + small triangle tail
     ctx.beginPath();
     ctx.ellipse(x, y, r * 0.75, r * 1.25, 0, 0, TAU);
     ctx.fill();
 
-    // tail
     ctx.beginPath();
     ctx.moveTo(x, y + r * 1.15);
     ctx.lineTo(x - r * 0.40, y + r * 1.85);
@@ -645,7 +639,6 @@ function drawRainDropletsForSplash(s, ms, base, rainN, windN, ang) {
     ctx.closePath();
     ctx.fill();
 
-    // occasional micro-splat
     if (rainN > 0.70 && (i % 3 === 0)) {
       const rr = r * 0.55;
       ctx.beginPath();
@@ -695,12 +688,9 @@ function rotatePoint(x, y, a) {
   const c = Math.cos(a), s = Math.sin(a);
   return { x: x * c - y * s, y: x * s + y * c };
 }
-
 function hexToRgba(hex, a) {
   const h = hex.replace("#", "").trim();
-  const full = h.length === 3
-    ? h.split("").map(ch => ch + ch).join("")
-    : h;
+  const full = h.length === 3 ? h.split("").map(ch => ch + ch).join("") : h;
   const n = parseInt(full, 16);
   const r = (n >> 16) & 255;
   const g = (n >> 8) & 255;
@@ -721,7 +711,32 @@ function drawPink(ms) {
   ctx.fill();
 }
 
-// ===================== AUDIO (same engine: genres + meteo tempo + night soft) =====================
+// ---------- Footer: left mode label, right "MB" signature ----------
+function drawFooter() {
+  const pad = 18;
+  const y = H - pad;
+  const day = isDayEffective();
+  const col = day ? "rgba(0,0,0,0.55)" : "rgba(255,255,255,0.65)";
+
+  // bottom-left current motif
+  ctx.save();
+  ctx.fillStyle = col;
+  ctx.textBaseline = "alphabetic";
+  ctx.font = "700 14px Arial";
+  ctx.fillText(modeLabel(currentMode), pad, y);
+  ctx.restore();
+
+  // bottom-right signature MB (italic)
+  ctx.save();
+  ctx.fillStyle = col;
+  ctx.textAlign = "right";
+  ctx.textBaseline = "alphabetic";
+  ctx.font = "italic 700 18px Arial";
+  ctx.fillText("MB", W - pad, y);
+  ctx.restore();
+}
+
+// ===================== AUDIO (unchanged engine) =====================
 let audioCtx = null;
 let master = null;
 let timbreLP = null;
@@ -1303,6 +1318,3 @@ requestAnimationFrame(loop);
 
 toggleNight.onchange = () => updateConsoleValues();
 updateConsoleValues();
-
-// ensure art initialized when user chooses “USE LAST”
-initArt(currentMode);
