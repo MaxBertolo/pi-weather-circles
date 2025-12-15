@@ -1,8 +1,11 @@
-// π Weather Circles — with ellipse morphing + meteor-driven motion + pink bounce trigger
-// - 199 circles + 1 pink trigger
-// - all move with similar speeds (small jitter)
-// - pink is faster and bounces on edges (no wrap)
-// - circles can squash into ellipses and return (wind+rain amplify deformation)
+// π Weather Circles — ellipse morphing + meteor-driven motion + pink bounce trigger
+// AUDIO:
+// - Toggle ON/OFF (real stop + close AudioContext)
+// - Volume slider (0..100) stored in localStorage
+// - Genre select: Jazz / Soul / Blues / Classical
+// - Tempo & density driven by weather; night becomes softer
+// VISUAL:
+// - Pink rotates slower (ellipse rot + wobble rotation reduced)
 
 const canvas = document.getElementById("c");
 const ctx = canvas.getContext("2d", { alpha: false });
@@ -20,6 +23,9 @@ const ovFog   = document.getElementById("ov-fog");
 
 const btnGeo = document.getElementById("btn-geo");
 const btnAudio = document.getElementById("btn-audio");
+const audioGenreSel = document.getElementById("audio-genre");
+const volSlider = document.getElementById("audio-volume");
+const volVal = document.getElementById("audio-volume-val");
 const toggleNight = document.getElementById("toggle-night");
 
 const alarmEnabled = document.getElementById("alarm-enabled");
@@ -161,13 +167,10 @@ function initCircles() {
       y: rng() * H,
       r,
       p: (i + 1) * PI,
-
-      // similar speeds (small jitter)
       s: lerp(0.92, 1.08, rng()),
       h: rng() * 360,
       isInfo: false,
 
-      // ellipse morphing (random per circle)
       squashPhase: rng() * PI * 2,
       squashSpeed: 0.6 + rng() * 1.0,
       squashBase:  0.03 + rng() * 0.05,
@@ -180,13 +183,11 @@ function initCircles() {
     });
   }
 
-  // Pink trigger as extra circle (faster + bounce)
   infoCircle = {
     x: rng() * W,
     y: rng() * H,
     r: mmToPx(3),
     p: (N + 1) * PI,
-
     s: 1.0,
     speedMul: 1.75,
     isInfo: true,
@@ -195,11 +196,11 @@ function initCircles() {
     vy: (rng() < 0.5 ? -1 : 1) * lerp(90, 170, rng()),
 
     squashPhase: rng() * PI * 2,
-    squashSpeed: 1.1,
+    squashSpeed: 0.85,   // slightly slower morph
     squashBase:  0.02,
     squashMax:   0.18,
     rotPhase: rng() * PI * 2,
-    rotSpeed: 0.9,
+    rotSpeed: 0.35,      // ✅ PINK ROTATES SLOWER (was 0.9)
 
     squash: 0,
     rot: 0
@@ -254,7 +255,6 @@ function bg() {
     return `rgb(${v},${v},${v})`;
   }
 
-  // very light greys for cloud/fog
   const lightGreyMix = clamp(clouds * 0.65 + fog * 0.85, 0, 1);
   const v = Math.floor(lerp(255, 240, lightGreyMix));
   return `rgb(${v},${v},${v})`;
@@ -277,17 +277,13 @@ function step(dt, ms) {
   const wy = Math.sin(windDir) * windN;
 
   const vibr = alarmRinging ? (3.5 + 6.0 * rainN) : 0;
-
-  // ellipse amplitude driven by weather
   const squashWeather = clamp(0.15 + windN * 0.75 + rainN * 0.55, 0, 1);
 
-  // normal circles: wrap
   for (const c of circles) {
     if (c.isInfo) continue;
 
     c.p += dt * (PI * 0.18 + c.s * 0.06);
 
-    // ellipse morph update
     c.squashPhase += dt * c.squashSpeed * (0.8 + 1.4 * rainN);
     c.rotPhase    += dt * c.rotSpeed * (0.7 + 1.2 * windN);
     const osc = Math.sin(c.squashPhase);
@@ -323,25 +319,23 @@ function step(dt, ms) {
     if (c.y > H + c.r) c.y = -c.r;
   }
 
-  // pink trigger: bounce (no wrap)
   if (infoCircle) {
     const mul = infoCircle.speedMul || 1.75;
     const speedWeather = lerp(0.85, 1.25, clamp(tN * 0.7 + rainN * 0.5 + windN * 0.2, 0, 1));
     const speed = mul * speedWeather;
 
-    // ellipse morph for pink too
     infoCircle.squashPhase += dt * infoCircle.squashSpeed * (1.0 + 1.6 * rainN);
     infoCircle.rotPhase    += dt * infoCircle.rotSpeed * (0.8 + 1.6 * windN);
     const oscP = Math.sin(infoCircle.squashPhase);
     infoCircle.squash = (infoCircle.squashBase + infoCircle.squashMax * squashWeather) * oscP;
     infoCircle.rot = (Math.sin(infoCircle.rotPhase) * 0.6) * (0.15 + 0.85 * windN);
 
-    // wind nudges velocity
     infoCircle.vx += wx * 12 * dt;
     infoCircle.vy += wy * 12 * dt;
 
-    // small harmonic wobble
-    infoCircle.p += dt * (PI * 0.22 + infoCircle.s * 0.10) * speed;
+    // ✅ PINK "p" rotation slower (reduced multipliers)
+    infoCircle.p += dt * (PI * 0.14 + infoCircle.s * 0.06) * speed;
+
     const wobX = Math.sin(infoCircle.p) * (14 + 10 * (1 - rainN));
     const wobY = Math.cos(infoCircle.p / PI) * (10 + 8 * (1 - rainN));
 
@@ -363,7 +357,7 @@ function step(dt, ms) {
   if (alarmRinging && ms >= alarmEndsAt) stopAlarm();
 }
 
-// Draw (ellipses for all circles)
+// Draw
 function draw(ms) {
   ctx.fillStyle = bg();
   ctx.fillRect(0, 0, W, H);
@@ -372,89 +366,138 @@ function draw(ms) {
   ctx.strokeStyle = day ? "rgba(0,0,0,0.90)" : "rgba(255,255,255,0.95)";
   ctx.lineWidth = 2.6;
 
-  // non-pink batched ellipses
   ctx.beginPath();
   for (const c of circles) {
     if (c.isInfo) continue;
-
     const rx = c.r * (1 + (c.squash || 0));
     const ry = c.r * (1 - (c.squash || 0));
-
     ctx.moveTo(c.x + rx, c.y);
     ctx.ellipse(c.x, c.y, Math.max(1, rx), Math.max(1, ry), (c.rot || 0), 0, PI * 2);
   }
   ctx.stroke();
 
-  // pink trigger (filled ellipse, no border)
   if (infoCircle) {
     const pulse = 0.10 + 0.08 * Math.sin(ms / 850);
     ctx.fillStyle = `rgba(255, 70, 170, ${0.92 + pulse})`;
-
     const rx = infoCircle.r * (1 + (infoCircle.squash || 0));
     const ry = infoCircle.r * (1 - (infoCircle.squash || 0));
-
     ctx.beginPath();
     ctx.ellipse(infoCircle.x, infoCircle.y, Math.max(1, rx), Math.max(1, ry), (infoCircle.rot || 0), 0, PI * 2);
     ctx.fill();
   }
 }
 
-// ===================== AUDIO (Vivaldi-ish) + Alarm =====================
+/* ===================== AUDIO ENGINE ===================== */
+
 let audioCtx = null;
-let timbreFilter = null;
-let compressor = null;
-let tremoloGain = null;
 let master = null;
+let timbreLP = null;
+let compressor = null;
 
-let pad = [];
-let harpBus = null;
+let padBus = null;
+let chordBus = null;
 let melodyBus = null;
-let rainBus = null;
+let percBus = null;
 
-let windLFO = null;
-let windLFODepth = null;
+let padOsc = [];
+let audioOn = false;
 
-let noiseBuffer = null;
-
-let nextBarAtMs = 0;
-let barIndex = 0;
-let nextHarpAtMs = 0;
+let nextChordAtMs = 0;
 let nextMelodyAtMs = 0;
+let nextPercAtMs = 0;
 
-let currentRootHz = 220;
-let currentChordSemis = [0, 4, 7, 11, 14, 17];
-let alarmNode = null;
+let currentChord = [0, 4, 7, 11];
+let rootHz = 220;
 
-const MODES = {
-  spring:  [0, 2, 4, 5, 7, 9, 11],
-  summer:  [0, 2, 4, 5, 7, 9, 10],
-  autumn:  [0, 2, 3, 5, 7, 9, 10],
-  winter:  [0, 2, 3, 5, 7, 8, 10]
+const GENRE = {
+  jazz: {
+    chordPool: [
+      [0, 4, 7, 11, 14],
+      [0, 4, 7, 11, 14, 21],
+      [0, 3, 7, 10, 14],
+      [0, 3, 7, 10, 14, 21],
+      [0, 4, 7, 10, 14],
+      [0, 4, 7, 10, 14, 18],
+      [0, 3, 6, 10, 14]
+    ],
+    bpm: [62, 112],
+    pad: { typeA: "triangle", typeB: "sine", detune: 4 },
+    melody: { density: 0.85, swing: 0.58 },
+    perc: { hat: 0.9, kick: 0.35 }
+  },
+  soul: {
+    chordPool: [
+      [0, 4, 7, 11, 14],
+      [0, 3, 7, 10, 14],
+      [0, 4, 7, 10, 14],
+      [0, 3, 7, 10, 14, 17]
+    ],
+    bpm: [58, 102],
+    pad: { typeA: "sine", typeB: "triangle", detune: 3 },
+    melody: { density: 0.65, swing: 0.54 },
+    perc: { hat: 0.7, kick: 0.45 }
+  },
+  blues: {
+    chordPool: [
+      [0, 4, 7, 10],
+      [0, 4, 7, 10, 14],
+      [0, 3, 7, 10],
+      [0, 4, 6, 10, 13]
+    ],
+    bpm: [54, 96],
+    pad: { typeA: "triangle", typeB: "sawtooth", detune: 6 },
+    melody: { density: 0.55, swing: 0.60 },
+    perc: { hat: 0.75, kick: 0.55 }
+  },
+  classical: {
+    chordPool: [
+      [0, 4, 7, 11],
+      [0, 3, 7, 10],
+      [0, 4, 7],
+      [0, 3, 7],
+      [0, 4, 7, 14]
+    ],
+    bpm: [48, 92],
+    pad: { typeA: "sine", typeB: "sine", detune: 2 },
+    melody: { density: 0.45, swing: 0.50 },
+    perc: { hat: 0.35, kick: 0.15 }
+  }
 };
 
-const PROGRESSION = {
-  spring:  [0, 3, 4, 0],
-  summer:  [0, 4, 3, 0],
-  autumn:  [0, 5, 3, 0],
-  winter:  [0, 4, 5, 0]
-};
+// Volume persistence
+let userVolume = 0.60;
+(function loadVolume() {
+  try {
+    const v = Number(localStorage.getItem("pi_volume"));
+    if (!Number.isNaN(v)) userVolume = clamp(v, 0, 1);
+  } catch {}
+  volSlider.value = String(Math.round(userVolume * 100));
+  volVal.textContent = `${Math.round(userVolume * 100)}%`;
+})();
+volSlider.addEventListener("input", () => {
+  userVolume = clamp(Number(volSlider.value) / 100, 0, 1);
+  volVal.textContent = `${Math.round(userVolume * 100)}%`;
+  try { localStorage.setItem("pi_volume", String(userVolume)); } catch {}
+  if (master && audioCtx) master.gain.setTargetAtTime(master.gain.value, audioCtx.currentTime, 0.01);
+});
 
-const MELODY = {
-  spring: [0,2,4,5,4,2,1,0, 2,4,5,7,5,4,2,0],
-  summer: [0,4,5,4,2,0,2,4, 5,7,5,4,2,0,2,0],
-  autumn: [0,2,3,5,3,2,1,0, 0,2,5,3,2,1,0,-1],
-  winter: [0,1,3,5,3,1,0,-1, 0,2,3,5,3,2,1,0]
-};
-
-function ensureAudio() {
-  if (audioCtx) return;
+function setAudioButton() {
+  btnAudio.textContent = audioOn ? "Audio: ON" : "Audio: OFF";
+}
+async function enableAudio() {
+  if (audioOn) return;
+  audioOn = true;
+  setAudioButton();
 
   audioCtx = new (window.AudioContext || window.webkitAudioContext)();
 
-  timbreFilter = audioCtx.createBiquadFilter();
-  timbreFilter.type = "lowpass";
-  timbreFilter.frequency.value = 5200;
-  timbreFilter.Q.value = 0.8;
+  master = audioCtx.createGain();
+  master.gain.value = 0.0001;
+
+  timbreLP = audioCtx.createBiquadFilter();
+  timbreLP.type = "lowpass";
+  timbreLP.frequency.value = 6000;
+  timbreLP.Q.value = 0.8;
 
   compressor = audioCtx.createDynamicsCompressor();
   compressor.threshold.value = -22;
@@ -463,59 +506,77 @@ function ensureAudio() {
   compressor.attack.value = 0.01;
   compressor.release.value = 0.2;
 
-  tremoloGain = audioCtx.createGain();
-  tremoloGain.gain.value = 1.0;
+  padBus = audioCtx.createGain();   padBus.gain.value = 0.60;
+  chordBus = audioCtx.createGain(); chordBus.gain.value = 0.55;
+  melodyBus = audioCtx.createGain();melodyBus.gain.value = 0.65;
+  percBus = audioCtx.createGain();  percBus.gain.value = 0.45;
 
-  master = audioCtx.createGain();
-  master.gain.value = 0.07;
+  padBus.connect(timbreLP);
+  chordBus.connect(timbreLP);
+  melodyBus.connect(timbreLP);
+  percBus.connect(timbreLP);
 
-  harpBus = audioCtx.createGain();   harpBus.gain.value = 0.22;
-  melodyBus = audioCtx.createGain(); melodyBus.gain.value = 0.55;
-  rainBus = audioCtx.createGain();   rainBus.gain.value = 0.22;
-
-  harpBus.connect(timbreFilter);
-  melodyBus.connect(timbreFilter);
-  rainBus.connect(timbreFilter);
-
-  timbreFilter.connect(compressor);
-  compressor.connect(tremoloGain);
-  tremoloGain.connect(master);
+  timbreLP.connect(compressor);
+  compressor.connect(master);
   master.connect(audioCtx.destination);
 
-  pad = [];
+  padOsc = [];
   for (let i = 0; i < 6; i++) {
-    const osc = audioCtx.createOscillator();
+    const o = audioCtx.createOscillator();
     const g = audioCtx.createGain();
-    osc.type = (i % 2 === 0) ? "triangle" : "sawtooth";
-    osc.detune.value = (i - 2.5) * 6;
+    o.frequency.value = 220;
     g.gain.value = 0.0001;
-    osc.connect(g);
-    g.connect(timbreFilter);
-    osc.start();
-    pad.push({ osc, g });
+    o.connect(g);
+    g.connect(padBus);
+    o.start();
+    padOsc.push({ o, g });
   }
 
-  windLFO = audioCtx.createOscillator();
-  windLFO.type = "sine";
-  windLFO.frequency.value = 4.2;
+  nextChordAtMs = 0;
+  nextMelodyAtMs = 0;
+  nextPercAtMs = 0;
 
-  windLFODepth = audioCtx.createGain();
-  windLFODepth.gain.value = 0.0;
-
-  windLFO.connect(windLFODepth);
-  windLFODepth.connect(tremoloGain.gain);
-  tremoloGain.gain.value = 1.0;
-  windLFO.start();
-
-  noiseBuffer = audioCtx.createBuffer(1, audioCtx.sampleRate * 0.25, audioCtx.sampleRate);
-  const data = noiseBuffer.getChannelData(0);
-  for (let i = 0; i < data.length; i++) {
-    data[i] = (Math.random() * 2 - 1) * (1 - i / data.length);
+  if (audioCtx.state === "suspended") {
+    try { await audioCtx.resume(); } catch {}
   }
-
-  btnAudio.textContent = "Audio enabled";
 }
-btnAudio.addEventListener("click", ensureAudio);
+async function disableAudio() {
+  if (!audioOn) return;
+  audioOn = false;
+  setAudioButton();
+
+  try {
+    if (audioCtx && audioCtx.state !== "closed") {
+      master.gain.setTargetAtTime(0.0001, audioCtx.currentTime, 0.04);
+      setTimeout(() => {
+        try { audioCtx.close(); } catch {}
+      }, 200);
+    }
+  } catch {}
+
+  audioCtx = null;
+  master = null;
+  timbreLP = null;
+  compressor = null;
+  padBus = chordBus = melodyBus = percBus = null;
+  padOsc = [];
+}
+
+btnAudio.addEventListener("click", () => {
+  if (!audioOn) enableAudio();
+  else disableAudio();
+});
+
+audioGenreSel.addEventListener("change", () => {
+  try { localStorage.setItem("pi_genre", audioGenreSel.value); } catch {}
+});
+(function loadGenre() {
+  try {
+    const g = localStorage.getItem("pi_genre");
+    if (g && GENRE[g]) audioGenreSel.value = g;
+  } catch {}
+})();
+setAudioButton();
 
 document.addEventListener("pointerdown", async () => {
   if (audioCtx && audioCtx.state === "suspended") {
@@ -523,183 +584,255 @@ document.addEventListener("pointerdown", async () => {
   }
 }, { passive: true });
 
-function updateTimbreAndDynamics() {
-  if (!audioCtx) return;
-
-  const fogN = clamp(weather.fog, 0, 1);
-  const cloudN = clamp(weather.cloudCover / 100, 0, 1);
+function weatherDrivenTempo(genreCfg) {
+  const tN = tempNorm(weather.tempC);
   const rainN = clamp(weather.rainMm / 10, 0, 1);
   const windN = clamp(weather.windMs / 12, 0, 1);
+
+  const energy = clamp(tN * 0.65 + rainN * 0.55 + windN * 0.20, 0, 1);
+  const [b0, b1] = genreCfg.bpm;
+  let bpm = lerp(b0, b1, energy);
+  if (!isDayEffective()) bpm *= 0.86;
+  return clamp(bpm, 38, 132);
+}
+
+function updateTimbre() {
+  if (!audioCtx) return;
+
+  const cloudN = clamp(weather.cloudCover / 100, 0, 1);
+  const fogN = clamp(weather.fog, 0, 1);
+  const rainN = clamp(weather.rainMm / 10, 0, 1);
   const tN = tempNorm(weather.tempC);
 
   const muffle = clamp(fogN * 0.75 + cloudN * 0.55, 0, 1);
-  const cutoff = lerp(7200, 650, muffle);
-  timbreFilter.frequency.setTargetAtTime(cutoff, audioCtx.currentTime, 0.12);
+  let cutoff = lerp(8200, 700, muffle);
+  if (!isDayEffective()) cutoff *= 0.72;
+  timbreLP.frequency.setTargetAtTime(cutoff, audioCtx.currentTime, 0.12);
 
-  const nightSoft = !isDayEffective();
-  const baseGain = (nightSoft ? 0.055 : 0.075) * lerp(0.85, 1.10, tN) * lerp(1.00, 1.10, rainN);
-  master.gain.setTargetAtTime(clamp(baseGain, 0.035, 0.10), audioCtx.currentTime, 0.18);
-
-  const tremDepth = clamp(0.02 + windN * 0.14, 0.02, 0.18);
-  windLFODepth.gain.setTargetAtTime(tremDepth, audioCtx.currentTime, 0.18);
-  windLFO.frequency.setTargetAtTime(lerp(3.2, 7.5, windN), audioCtx.currentTime, 0.25);
-
-  harpBus.gain.setTargetAtTime(lerp(0.18, 0.30, rainN), audioCtx.currentTime, 0.18);
-  melodyBus.gain.setTargetAtTime(lerp(0.52, 0.62, 1 - muffle), audioCtx.currentTime, 0.22);
-  rainBus.gain.setTargetAtTime(lerp(0.10, 0.35, rainN), audioCtx.currentTime, 0.14);
+  // master gain: apply userVolume + meteo + night softness
+  let g = (0.045 + 0.020 * tN + 0.012 * rainN);
+  if (!isDayEffective()) g *= 0.72;
+  g *= userVolume; // ✅ user volume
+  master.gain.setTargetAtTime(clamp(g, 0.0001, 0.10), audioCtx.currentTime, 0.18);
 }
 
-function degToSemitone(mode, degree) {
-  const len = mode.length;
-  const oct = Math.floor(degree / len);
-  let d = degree % len;
-  if (d < 0) d += len;
-  return mode[d] + 12 * oct;
-}
+function setPadVoicing(root, semis, genreCfg) {
+  if (!audioCtx) return;
 
-function buildChordSemis(mode, triadRootDegree, seasonName) {
-  const r = triadRootDegree;
-  const triad = [r, r + 2, r + 4];
+  const det = genreCfg.pad.detune;
+  const aType = genreCfg.pad.typeA;
+  const bType = genreCfg.pad.typeB;
 
-  let ext;
-  if (seasonName === "summer") ext = [r + 6, r + 1, r + 5];
-  else ext = [r + 6, r + 1, r + 3];
+  for (let i = 0; i < padOsc.length; i++) {
+    const v = padOsc[i];
+    v.o.type = (i % 2 === 0) ? aType : bType;
+    v.o.detune.value = (i - (padOsc.length - 1) / 2) * det;
+    const semi = semis[i % semis.length] + (i >= semis.length ? 12 : 0);
+    const hz = root * Math.pow(2, semi / 12);
+    v.o.frequency.setTargetAtTime(hz, audioCtx.currentTime, 0.08);
 
-  const degrees = [...triad, ...ext].slice(0, 6);
-  const semis = degrees.map(d => degToSemitone(mode, d));
-  semis.sort((a,b)=>a-b);
-  for (let i=1;i<semis.length;i++){
-    while (semis[i] - semis[i-1] < 3) semis[i] += 12;
-  }
-  return semis;
-}
-
-function setPadChord(rootHz, semis) {
-  const t = audioCtx.currentTime;
-  for (let i = 0; i < 6; i++) {
-    const hz = rootHz * Math.pow(2, (semis[i] / 12));
-    pad[i].osc.frequency.setTargetAtTime(hz, t, 0.06);
-  }
-}
-function padOn(level) {
-  const t = audioCtx.currentTime;
-  for (const v of pad) {
-    v.g.gain.cancelScheduledValues(t);
-    v.g.gain.setValueAtTime(Math.max(v.g.gain.value, 0.0001), t);
-    v.g.gain.linearRampToValueAtTime(level, t + 1.2);
-  }
-}
-function padOff() {
-  const t = audioCtx.currentTime;
-  for (const v of pad) {
-    v.g.gain.cancelScheduledValues(t);
-    v.g.gain.setValueAtTime(Math.max(v.g.gain.value, 0.0001), t);
-    v.g.gain.exponentialRampToValueAtTime(0.0001, t + 1.4);
+    const base = !isDayEffective() ? 0.010 : 0.014;
+    v.g.gain.setTargetAtTime(base, audioCtx.currentTime, 0.18);
   }
 }
 
-function harpPluck(freq, when, vel = 0.12) {
+function pickChord(genreCfg) {
+  const tN = tempNorm(weather.tempC);
+  const rainN = clamp(weather.rainMm / 10, 0, 1);
+  const cloudN = clamp(weather.cloudCover / 100, 0, 1);
+  const idx = Math.floor((tN * 1.7 + rainN * 2.2 + cloudN * 1.1) * 3.1) % genreCfg.chordPool.length;
+  return genreCfg.chordPool[(idx + (seasonKey() === "winter" ? 1 : 0)) % genreCfg.chordPool.length];
+}
+
+function playChordStab(root, semis, vel, dur) {
+  if (!audioCtx) return;
+
+  const t0 = audioCtx.currentTime + 0.01;
+  const g = audioCtx.createGain();
+  g.gain.value = 0.0001;
+  g.connect(chordBus);
+
+  g.gain.setValueAtTime(0.0001, t0);
+  g.gain.linearRampToValueAtTime(vel, t0 + 0.03);
+  g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+
+  semis.slice(0, 5).forEach((s, i) => {
+    const o = audioCtx.createOscillator();
+    o.type = "sine";
+    o.detune.value = (i - 2) * 3.5;
+    o.frequency.value = root * Math.pow(2, s / 12);
+    o.connect(g);
+    o.start(t0);
+    o.stop(t0 + dur + 0.05);
+  });
+}
+
+function playNote(freq, when, dur, vel, type = "sine") {
+  if (!audioCtx) return;
   const o = audioCtx.createOscillator();
   const g = audioCtx.createGain();
-  const bp = audioCtx.createBiquadFilter();
-
-  o.type = "square";
+  o.type = type;
   o.frequency.setValueAtTime(freq, when);
 
-  bp.type = "bandpass";
-  bp.frequency.setValueAtTime(lerp(900, 1800, Math.random()), when);
-  bp.Q.value = 1.0;
-
   g.gain.setValueAtTime(0.0001, when);
-  g.gain.exponentialRampToValueAtTime(vel, when + 0.008);
-  g.gain.exponentialRampToValueAtTime(0.0001, when + 0.18);
+  g.gain.linearRampToValueAtTime(vel, when + 0.02);
+  g.gain.exponentialRampToValueAtTime(0.0001, when + dur);
 
-  o.connect(bp);
-  bp.connect(g);
-  g.connect(harpBus);
+  o.connect(g);
+  g.connect(melodyBus);
 
   o.start(when);
-  o.stop(when + 0.22);
+  o.stop(when + dur + 0.05);
 }
 
-function updateMusic(ms) {
-  if (!audioCtx || alarmRinging) return;
+function playPerc(ms, bpm, genreCfg) {
+  if (!audioCtx) return;
+
+  const rainN = clamp(weather.rainMm / 10, 0, 1);
+  const windN = clamp(weather.windMs / 12, 0, 1);
+
+  let dens = clamp(0.10 + rainN * 0.55 + windN * 0.25, 0, 0.95);
+  if (!isDayEffective()) dens *= 0.65;
+
+  const beatMs = 60000 / bpm;
+  const stepMs = beatMs / 2;
+
+  while (ms >= nextPercAtMs) {
+    const t0 = audioCtx.currentTime + 0.01;
+
+    if (Math.random() < dens * genreCfg.perc.hat) {
+      const buf = audioCtx.createBuffer(1, audioCtx.sampleRate * 0.08, audioCtx.sampleRate);
+      const d = buf.getChannelData(0);
+      for (let i = 0; i < d.length; i++) d[i] = (Math.random()*2-1) * (1 - i / d.length);
+
+      const src = audioCtx.createBufferSource();
+      src.buffer = buf;
+
+      const hp = audioCtx.createBiquadFilter();
+      hp.type = "highpass";
+      hp.frequency.value = 2200;
+
+      const g = audioCtx.createGain();
+      g.gain.value = 0.0001;
+      g.gain.setValueAtTime(0.0001, t0);
+      g.gain.exponentialRampToValueAtTime(0.05 + 0.10 * dens, t0 + 0.004);
+      g.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.06);
+
+      src.connect(hp);
+      hp.connect(g);
+      g.connect(percBus);
+
+      src.start(t0);
+      src.stop(t0 + 0.07);
+    }
+
+    if (Math.random() < dens * genreCfg.perc.kick * (0.35 + rainN)) {
+      const o = audioCtx.createOscillator();
+      const g = audioCtx.createGain();
+      o.type = "sine";
+      o.frequency.setValueAtTime(110, t0);
+      o.frequency.exponentialRampToValueAtTime(55, t0 + 0.10);
+
+      g.gain.setValueAtTime(0.0001, t0);
+      g.gain.exponentialRampToValueAtTime(0.12, t0 + 0.01);
+      g.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.14);
+
+      o.connect(g);
+      g.connect(percBus);
+      o.start(t0);
+      o.stop(t0 + 0.18);
+    }
+
+    nextPercAtMs += stepMs * (0.85 + Math.random() * 0.5);
+  }
+}
+
+function playMelody(ms, bpm, genreCfg) {
+  if (!audioCtx) return;
 
   const tN = tempNorm(weather.tempC);
   const rainN = clamp(weather.rainMm / 10, 0, 1);
   const windN = clamp(weather.windMs / 12, 0, 1);
 
-  updateTimbreAndDynamics();
+  const scale = (audioGenreSel.value === "blues")
+    ? [0, 3, 5, 6, 7, 10]
+    : [0, 2, 4, 7, 9, 11];
 
-  const season = seasonKey();
-  const mode = MODES[season];
+  let dens = clamp(0.20 + genreCfg.melody.density * (tN * 0.65 + rainN * 0.35 + windN * 0.25), 0.15, 0.95);
+  if (!isDayEffective()) dens *= 0.60;
 
-  const bpm = lerp(48, 120, clamp(tN * 0.65 + rainN * 0.45 + windN * 0.15, 0, 1));
   const beatMs = 60000 / bpm;
-  const barMs = beatMs * 4;
-
-  currentRootHz = lerp(110, 294, tN);
-  const rootHz = currentRootHz;
-
-  const padLevel = clamp((isDayEffective() ? 0.018 : 0.012) + rainN * 0.006, 0.010, 0.030);
-  padOn(padLevel);
-
-  if (nextBarAtMs === 0) {
-    nextBarAtMs = ms;
-    nextHarpAtMs = ms;
-    nextMelodyAtMs = ms + barMs;
-    barIndex = 0;
-  }
-
-  if (ms >= nextBarAtMs) {
-    const prog = PROGRESSION[season];
-    const triadRootDeg = prog[barIndex % prog.length];
-    currentChordSemis = buildChordSemis(mode, triadRootDeg, season);
-    setPadChord(rootHz, currentChordSemis);
-    nextBarAtMs += barMs;
-    barIndex++;
-  }
-
-  const harpStepMs = beatMs / 2;
-  while (ms >= nextHarpAtMs) {
-    const idx = [0, 2, 4, 2][Math.floor((nextHarpAtMs / harpStepMs) % 4)];
-    const semi = currentChordSemis[idx % currentChordSemis.length];
-    const f = rootHz * Math.pow(2, (semi - 12) / 12);
-    harpPluck(f, audioCtx.currentTime + 0.02, lerp(0.05, 0.13, clamp(0.35 + rainN, 0, 1)));
-    nextHarpAtMs += harpStepMs;
-  }
-
-  const phrase = MELODY[season];
-  const stepDur = (beatMs / 1000) * lerp(0.55, 0.35, clamp(tN + rainN * 0.6, 0, 1));
-  const phraseMs = phrase.length * stepDur * 1000;
+  const stepMs = beatMs / 2;
 
   while (ms >= nextMelodyAtMs) {
-    const start = audioCtx.currentTime + 0.05;
-    const vel = clamp(0.04 + (isDayEffective() ? 0.03 : 0.015) + rainN * 0.02, 0.03, 0.09);
+    const now = audioCtx.currentTime;
+    if (Math.random() < dens) {
+      const deg = scale[Math.floor(Math.random() * scale.length)];
+      const octave = (Math.random() < 0.65) ? 12 : 24;
 
-    for (let i = 0; i < phrase.length; i++) {
-      const semi = degToSemitone(mode, phrase[i]) + 12;
+      const swing = genreCfg.melody.swing;
+      const swingOffset = (Math.random() < 0.5) ? 0 : (beatMs/1000) * (swing - 0.5) * 0.35;
+
+      const semi = deg + octave + (Math.random() < 0.15 ? 1 : 0);
       const freq = rootHz * Math.pow(2, semi / 12);
-      const when = start + i * stepDur;
 
-      const o = audioCtx.createOscillator();
-      const g = audioCtx.createGain();
-      o.type = "sine";
-      o.frequency.setValueAtTime(freq, when);
-      g.gain.setValueAtTime(0.0001, when);
-      g.gain.linearRampToValueAtTime(vel, when + 0.03);
-      g.gain.exponentialRampToValueAtTime(0.0001, when + stepDur * 0.95);
-      o.connect(g);
-      g.connect(melodyBus);
-      o.start(when);
-      o.stop(when + stepDur);
+      const vel = (0.03 + 0.05 * dens) * (isDayEffective() ? 1.0 : 0.72);
+      const dur = (0.10 + 0.22 * (1 - rainN)) * (isDayEffective() ? 1.0 : 1.15);
+
+      const type = (audioGenreSel.value === "jazz" || audioGenreSel.value === "soul") ? "triangle" : "sine";
+      playNote(freq, now + 0.02 + swingOffset, dur, vel, type);
     }
 
-    nextMelodyAtMs += phraseMs + lerp(600, 160, clamp(tN + rainN, 0, 1));
+    nextMelodyAtMs += stepMs * (0.85 + Math.random() * 0.7);
   }
 }
 
-// Alarm persistence
+function updateMusic(ms) {
+  if (!audioOn || !audioCtx || alarmRinging) return;
+
+  const gName = audioGenreSel.value || "jazz";
+  const genreCfg = GENRE[gName] || GENRE.jazz;
+
+  updateTimbre();
+
+  const tN = tempNorm(weather.tempC);
+  rootHz = lerp(196, 294, tN);
+  if (!isDayEffective()) rootHz *= 0.92;
+
+  const bpm = weatherDrivenTempo(genreCfg);
+  const beatMs = 60000 / bpm;
+  const barMs = beatMs * 4;
+
+  if (nextChordAtMs === 0) {
+    nextChordAtMs = ms;
+    nextMelodyAtMs = ms;
+    nextPercAtMs = ms;
+  }
+
+  if (ms >= nextChordAtMs) {
+    currentChord = pickChord(genreCfg);
+    setPadVoicing(rootHz, currentChord, genreCfg);
+
+    const rainN = clamp(weather.rainMm / 10, 0, 1);
+    const windN = clamp(weather.windMs / 12, 0, 1);
+    let stabProb = clamp(0.15 + rainN * 0.45 + windN * 0.20, 0.10, 0.80);
+    if (!isDayEffective()) stabProb *= 0.55;
+
+    if (Math.random() < stabProb) {
+      const vel = (0.05 + 0.08 * stabProb) * (isDayEffective() ? 1 : 0.75);
+      playChordStab(rootHz, currentChord, vel, 0.9 + Math.random() * 0.7);
+    }
+
+    nextChordAtMs += barMs * (0.90 + Math.random() * 0.35);
+  }
+
+  playMelody(ms, bpm, genreCfg);
+  playPerc(ms, bpm, genreCfg);
+}
+
+/* ===================== ALARM ===================== */
+let alarmNode = null;
+
 function loadAlarm() {
   try {
     const saved = JSON.parse(localStorage.getItem("pi_alarm") || "null");
@@ -724,8 +857,7 @@ alarmSound.onchange = saveAlarm;
 loadAlarm();
 
 function startAlarm(durationMs = 30000) {
-  ensureAudio();
-  padOff();
+  enableAudio();
   alarmRinging = true;
   alarmEndsAt = performance.now() + durationMs;
   if (alarmSound.value === "siren") playSiren(durationMs);
@@ -735,13 +867,14 @@ function stopAlarm() {
   alarmRinging = false;
   alarmEndsAt = 0;
   if (alarmNode) { try { alarmNode.stop(); } catch {} alarmNode = null; }
-  nextBarAtMs = 0; nextHarpAtMs = 0; nextMelodyAtMs = 0;
+  nextChordAtMs = 0;
+  nextMelodyAtMs = 0;
+  nextPercAtMs = 0;
 }
 
 alarmTest.onclick = () => startAlarm(8000);
 alarmStop.onclick = () => stopAlarm();
 
-// fire alarm at HH:MM
 setInterval(() => {
   if (!alarmEnabled.checked) return;
   if (!alarmTime.value) return;
@@ -756,6 +889,7 @@ setInterval(() => {
 }, 1000);
 
 function playSiren(durationMs) {
+  if (!audioCtx) return;
   const t0 = audioCtx.currentTime;
   const dur = durationMs / 1000;
 
@@ -785,6 +919,7 @@ function playSiren(durationMs) {
 }
 
 function playTrumpet(durationMs) {
+  if (!audioCtx) return;
   const t0 = audioCtx.currentTime;
   const dur = durationMs / 1000;
 
@@ -828,7 +963,7 @@ function loop(ms) {
   draw(ms);
   updateConsoleValues();
 
-  if (audioCtx && audioCtx.state !== "closed") updateMusic(ms);
+  if (audioOn) updateMusic(ms);
 
   requestAnimationFrame(loop);
 }
