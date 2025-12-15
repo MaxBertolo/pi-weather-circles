@@ -28,7 +28,7 @@ html, body {
 .hidden { display: none; }
 
 .panel {
-  width: min(560px, calc(100vw - 24px));
+  width: min(720px, calc(100vw - 24px));
   border-radius: 18px;
   background: rgba(255,255,255,0.92);
   box-shadow: 0 14px 50px rgba(0,0,0,0.25);
@@ -54,6 +54,12 @@ html, body {
   font-weight: 700;
   letter-spacing: 0.8px;
   cursor: pointer;
+}
+
+.panel-main .subtitle {
+  margin-top: 8px;
+  opacity: 0.75;
+  font-weight: 700;
 }
 
 .bigtime {
@@ -132,7 +138,7 @@ html, body {
   margin: 8px 0;
 }
 
-#audio-genre, #alarm-time, #alarm-sound {
+#art-mode, #audio-genre, #alarm-time, #alarm-sound {
   flex: 1;
   border-radius: 10px;
   padding: 10px;
@@ -141,18 +147,14 @@ html, body {
   background: #fff;
 }
 
-.volrow {
-  gap: 12px;
-}
+.volrow { gap: 12px; }
 .vlabel {
-  width: 44px;
+  width: 52px;
   font-weight: 900;
   letter-spacing: 1px;
   opacity: 0.75;
 }
-#audio-volume {
-  flex: 1;
-}
+#audio-volume { flex: 1; }
 .vval {
   width: 58px;
   text-align: right;
@@ -171,3 +173,39 @@ html, body {
   color: rgb(255, 70, 170);
 }
 
+/* Mode picker cards */
+.modegrid {
+  margin-top: 14px;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+}
+
+.modecard {
+  border: 1px solid rgba(0,0,0,0.10);
+  border-radius: 16px;
+  background: rgba(245,245,245,0.8);
+  padding: 14px;
+  cursor: pointer;
+  text-align: left;
+  transition: transform 120ms ease, background 120ms ease;
+}
+.modecard:hover {
+  transform: translateY(-2px);
+  background: rgba(235,235,235,0.95);
+}
+.modeicon {
+  font-size: 26px;
+  font-weight: 900;
+}
+.modetitle {
+  margin-top: 8px;
+  font-size: 16px;
+  font-weight: 900;
+}
+.modedesc {
+  margin-top: 6px;
+  font-size: 12px;
+  opacity: 0.72;
+  font-weight: 700;
+}
