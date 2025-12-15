@@ -1,16 +1,15 @@
-// π Weather Circles — ellipse morphing + meteor-driven motion + pink bounce trigger
-// AUDIO:
-// - Toggle ON/OFF (real stop + close AudioContext)
-// - Volume slider (0..100) stored in localStorage
-// - Genre select: Jazz / Soul / Blues / Classical
-// - Tempo & density driven by weather; night becomes softer
-// VISUAL:
-// - Pink rotates slower (ellipse rot + wobble rotation reduced)
+// π Weather Art — 3 modes: circles / splash / diamonds
+// - same background, weather, audio, alarm, menu
+// - pink dot always present; opens menu; bounces; rotates slower
 
 const canvas = document.getElementById("c");
 const ctx = canvas.getContext("2d", { alpha: false });
 
-// Overlay UI
+// MODE PICKER UI
+const modePicker = document.getElementById("modePicker");
+const btnSkip = document.getElementById("btn-skip");
+
+// MENU UI
 const overlay = document.getElementById("overlay");
 const btnExit = document.getElementById("btn-exit");
 
@@ -24,6 +23,8 @@ const ovFog   = document.getElementById("ov-fog");
 const btnGeo = document.getElementById("btn-geo");
 const btnAudio = document.getElementById("btn-audio");
 const audioGenreSel = document.getElementById("audio-genre");
+const artModeSel = document.getElementById("art-mode");
+
 const volSlider = document.getElementById("audio-volume");
 const volVal = document.getElementById("audio-volume-val");
 const toggleNight = document.getElementById("toggle-night");
@@ -34,40 +35,12 @@ const alarmSound = document.getElementById("alarm-sound");
 const alarmTest = document.getElementById("alarm-test");
 const alarmStop = document.getElementById("alarm-stop");
 
-function openConsole() {
-  overlay.classList.remove("hidden");
-  overlay.setAttribute("aria-hidden", "false");
-}
-function closeConsole() {
-  overlay.classList.add("hidden");
-  overlay.setAttribute("aria-hidden", "true");
-}
-btnExit.addEventListener("click", closeConsole);
-overlay.addEventListener("pointerdown", (e) => {
-  if (e.target === overlay) closeConsole();
-}, { passive: true });
-
-// Resize
-let W = 0, H = 0, DPR = 1;
-function resize() {
-  DPR = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
-  W = window.innerWidth;
-  H = window.innerHeight;
-  canvas.width = Math.floor(W * DPR);
-  canvas.height = Math.floor(H * DPR);
-  canvas.style.width = W + "px";
-  canvas.style.height = H + "px";
-  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
-}
-window.addEventListener("resize", () => { resize(); initCircles(); });
-resize();
-
-// Helpers
+// ---------- Helpers ----------
 const PI = Math.PI;
+const TAU = Math.PI * 2;
 const clamp = (x, a, b) => Math.max(a, Math.min(b, x));
 const lerp = (a, b, t) => a + (b - a) * t;
 const pad2 = (n) => String(n).padStart(2, "0");
-
 function tempNorm(tC) { return clamp((tC - (-15)) / (50 - (-15)), 0, 1); }
 function mmToPx(mm) { return mm * (96 / 25.4); }
 
@@ -92,7 +65,36 @@ function seasonSeed(sk) {
 }
 function isDayEffective() { return toggleNight.checked ? false : weather.isDay; }
 
-// Weather
+// ---------- Overlays ----------
+function openConsole() {
+  overlay.classList.remove("hidden");
+  overlay.setAttribute("aria-hidden", "false");
+}
+function closeConsole() {
+  overlay.classList.add("hidden");
+  overlay.setAttribute("aria-hidden", "true");
+}
+btnExit.addEventListener("click", closeConsole);
+overlay.addEventListener("pointerdown", (e) => {
+  if (e.target === overlay) closeConsole();
+}, { passive: true });
+
+// ---------- Resize ----------
+let W = 0, H = 0, DPR = 1;
+function resize() {
+  DPR = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
+  W = window.innerWidth;
+  H = window.innerHeight;
+  canvas.width = Math.floor(W * DPR);
+  canvas.height = Math.floor(H * DPR);
+  canvas.style.width = W + "px";
+  canvas.style.height = H + "px";
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+}
+window.addEventListener("resize", () => { resize(); initArt(currentMode); });
+resize();
+
+// ---------- Weather ----------
 const weather = {
   tempC: 18,
   cloudCover: 40,
@@ -126,18 +128,16 @@ async function fetchWeather(lat = 41.9, lon = 12.5) {
 
   updateConsoleValues();
 }
-
 btnGeo.addEventListener("click", () => {
   navigator.geolocation?.getCurrentPosition(
     (p) => fetchWeather(p.coords.latitude, p.coords.longitude),
     () => fetchWeather()
   );
 });
-
 fetchWeather().catch(()=>{});
 setInterval(() => fetchWeather().catch(()=>{}), 10 * 60 * 1000);
 
-// Console values
+// ---------- Console values ----------
 function updateConsoleValues() {
   const now = new Date();
   ovTime.textContent = `${pad2(now.getHours())}:${pad2(now.getMinutes())}`;
@@ -149,90 +149,9 @@ function updateConsoleValues() {
 }
 setInterval(updateConsoleValues, 10_000);
 
-// Circles
-const N = 199;
-let circles = [];
-let infoCircle = null;
-
-function initCircles() {
-  const rng = mulberry32(seasonSeed(seasonKey()));
-
-  circles = [];
-  for (let i = 0; i < N; i++) {
-    const baseR = 8 + rng() * 16;
-    const r = baseR * 4.0;
-
-    circles.push({
-      x: rng() * W,
-      y: rng() * H,
-      r,
-      p: (i + 1) * PI,
-      s: lerp(0.92, 1.08, rng()),
-      h: rng() * 360,
-      isInfo: false,
-
-      squashPhase: rng() * PI * 2,
-      squashSpeed: 0.6 + rng() * 1.0,
-      squashBase:  0.03 + rng() * 0.05,
-      squashMax:   0.10 + rng() * 0.18,
-      rotPhase: rng() * PI * 2,
-      rotSpeed: 0.2 + rng() * 0.7,
-
-      squash: 0,
-      rot: 0
-    });
-  }
-
-  infoCircle = {
-    x: rng() * W,
-    y: rng() * H,
-    r: mmToPx(3),
-    p: (N + 1) * PI,
-    s: 1.0,
-    speedMul: 1.75,
-    isInfo: true,
-
-    vx: (rng() < 0.5 ? -1 : 1) * lerp(90, 170, rng()),
-    vy: (rng() < 0.5 ? -1 : 1) * lerp(90, 170, rng()),
-
-    squashPhase: rng() * PI * 2,
-    squashSpeed: 0.85,   // slightly slower morph
-    squashBase:  0.02,
-    squashMax:   0.18,
-    rotPhase: rng() * PI * 2,
-    rotSpeed: 0.35,      // ✅ PINK ROTATES SLOWER (was 0.9)
-
-    squash: 0,
-    rot: 0
-  };
-
-  circles.push(infoCircle);
-}
-initCircles();
-
-// Click pink trigger to open console
-canvas.addEventListener("pointerdown", (e) => {
-  if (!overlay.classList.contains("hidden")) return;
-  if (!infoCircle) return;
-
-  const rect = canvas.getBoundingClientRect();
-  const x = e.clientX - rect.left;
-  const y = e.clientY - rect.top;
-
-  const dx = x - infoCircle.x;
-  const dy = y - infoCircle.y;
-  const d = Math.sqrt(dx*dx + dy*dy);
-
-  if (d <= infoCircle.r + 40) {
-    updateConsoleValues();
-    openConsole();
-  }
-}, { passive: true });
-
-// Background
+// ---------- Background ----------
 function bg() {
   const day = isDayEffective();
-
   const clouds = clamp(weather.cloudCover / 100, 0, 1);
   const fog = clamp(weather.fog, 0, 1);
   const rainN = clamp(weather.rainMm / 10, 0, 1);
@@ -246,7 +165,6 @@ function bg() {
     const v = Math.floor(lerp(10, 55, lift));
     return `rgb(${v},${v},${v})`;
   }
-
   if (sunny) return `rgb(255,255,255)`;
 
   if (stormN > 0.65) {
@@ -260,18 +178,201 @@ function bg() {
   return `rgb(${v},${v},${v})`;
 }
 
-// Alarm vibration
+// ===================== ART MODES =====================
+const MODES = ["circles", "splash", "diamonds"];
+let currentMode = "circles";
+
+function loadMode() {
+  try {
+    const m = localStorage.getItem("pi_mode");
+    if (m && MODES.includes(m)) currentMode = m;
+  } catch {}
+  artModeSel.value = currentMode;
+}
+function saveMode(m) {
+  currentMode = m;
+  artModeSel.value = m;
+  try { localStorage.setItem("pi_mode", m); } catch {}
+}
+
+function showModePicker() {
+  modePicker.classList.remove("hidden");
+  modePicker.setAttribute("aria-hidden", "false");
+}
+function hideModePicker() {
+  modePicker.classList.add("hidden");
+  modePicker.setAttribute("aria-hidden", "true");
+}
+
+modePicker.addEventListener("click", (e) => {
+  const btn = e.target.closest("[data-mode]");
+  if (!btn) return;
+  const m = btn.getAttribute("data-mode");
+  if (!MODES.includes(m)) return;
+  saveMode(m);
+  initArt(currentMode);
+  hideModePicker();
+});
+
+btnSkip.addEventListener("click", () => {
+  loadMode();
+  initArt(currentMode);
+  hideModePicker();
+});
+
+artModeSel.addEventListener("change", () => {
+  const m = artModeSel.value;
+  saveMode(m);
+  initArt(currentMode);
+});
+
+// ---------- Shared “pink dot” ----------
+let infoDot = null;
+
+// ---------- Shapes per mode ----------
+let circles = [];   // circles mode
+let splashes = [];  // splash mode
+let diamonds = [];  // diamonds mode
+
+// Diamonds palette (edit freely if you want to match your slide precisely)
+const DIAMOND_PALETTE = [
+  "#FF3B30", "#FF9500", "#FFCC00", "#34C759",
+  "#0A84FF", "#5E5CE6", "#AF52DE", "#FF2D55",
+  "#00C7BE", "#64D2FF"
+];
+
+function initArt(mode) {
+  const rng = mulberry32(seasonSeed(seasonKey()));
+  circles = [];
+  splashes = [];
+  diamonds = [];
+
+  // keep pink dot always (same)
+  infoDot = {
+    x: rng() * W,
+    y: rng() * H,
+    r: mmToPx(3),
+    p: rng() * TAU,
+    s: 1.0,
+    speedMul: 1.75,
+    vx: (rng() < 0.5 ? -1 : 1) * lerp(90, 170, rng()),
+    vy: (rng() < 0.5 ? -1 : 1) * lerp(90, 170, rng()),
+    squashPhase: rng() * TAU,
+    squashSpeed: 0.85,
+    squashBase: 0.02,
+    squashMax: 0.18,
+    rotPhase: rng() * TAU,
+    rotSpeed: 0.35,   // slow rotation
+    squash: 0,
+    rot: 0
+  };
+
+  if (mode === "circles") {
+    const N = 199;
+    for (let i = 0; i < N; i++) {
+      const baseR = 8 + rng() * 16;
+      const r = baseR * 4.0;
+      circles.push({
+        x: rng() * W,
+        y: rng() * H,
+        r,
+        p: (i + 1) * PI,
+        s: lerp(0.92, 1.08, rng()),
+        h: rng() * 360,
+
+        squashPhase: rng() * TAU,
+        squashSpeed: 0.6 + rng(),
+        squashBase: 0.03 + rng() * 0.05,
+        squashMax: 0.10 + rng() * 0.18,
+        rotPhase: rng() * TAU,
+        rotSpeed: 0.2 + rng() * 0.7,
+        squash: 0,
+        rot: 0
+      });
+    }
+  }
+
+  if (mode === "splash") {
+    // Fewer, larger blobs to read well
+    const N = 70;
+    for (let i = 0; i < N; i++) {
+      const base = lerp(22, 70, rng());
+      const points = Math.floor(lerp(7, 12, rng()));
+      const amps = Array.from({ length: points }, () => lerp(0.15, 0.55, rng()));
+      const phases = Array.from({ length: points }, () => rng() * TAU);
+
+      splashes.push({
+        x: rng() * W,
+        y: rng() * H,
+        base,
+        points,
+        amps,
+        phases,
+        wob: 0.6 + rng() * 1.3,
+        drift: 0.6 + rng() * 0.8,
+        rot: rng() * TAU,
+        rotSpeed: lerp(-0.10, 0.10, rng()),
+        p: rng() * TAU
+      });
+    }
+  }
+
+  if (mode === "diamonds") {
+    const N = 130;
+    for (let i = 0; i < N; i++) {
+      const size = lerp(16, 70, rng());
+      diamonds.push({
+        x: rng() * W,
+        y: rng() * H,
+        size,
+        a: rng() * TAU,
+        spin: lerp(-0.25, 0.25, rng()),
+        skewPhase: rng() * TAU,
+        skewSpeed: 0.4 + rng() * 1.0,
+        skewAmt: 0.08 + rng() * 0.22,
+        vx: lerp(-18, 18, rng()),
+        vy: lerp(-18, 18, rng()),
+        color: DIAMOND_PALETTE[i % DIAMOND_PALETTE.length],
+        alpha: lerp(0.65, 0.95, rng())
+      });
+    }
+  }
+}
+
+// initial mode logic
+loadMode();
+showModePicker();
+
+// pink dot click -> open menu
+canvas.addEventListener("pointerdown", (e) => {
+  if (!overlay.classList.contains("hidden")) return;
+  if (!infoDot) return;
+
+  const rect = canvas.getBoundingClientRect();
+  const x = e.clientX - rect.left;
+  const y = e.clientY - rect.top;
+
+  const dx = x - infoDot.x;
+  const dy = y - infoDot.y;
+  const d = Math.sqrt(dx*dx + dy*dy);
+
+  if (d <= infoDot.r + 40) {
+    updateConsoleValues();
+    openConsole();
+  }
+}, { passive: true });
+
+// ===================== ALARM vibration =====================
 let alarmRinging = false;
 let alarmEndsAt = 0;
 
-// Motion + ellipse morphing
+// ===================== MOTION =====================
 function step(dt, ms) {
   const tN = tempNorm(weather.tempC);
   const rainN = clamp(weather.rainMm / 10, 0, 1);
   const windN = clamp(weather.windMs / 12, 0, 1);
 
   const base = lerp(14, 60, tN);
-
   const windDir = (weather.windDirDeg || 0) * PI / 180;
   const wx = Math.cos(windDir) * windN;
   const wy = Math.sin(windDir) * windN;
@@ -279,116 +380,296 @@ function step(dt, ms) {
   const vibr = alarmRinging ? (3.5 + 6.0 * rainN) : 0;
   const squashWeather = clamp(0.15 + windN * 0.75 + rainN * 0.55, 0, 1);
 
-  for (const c of circles) {
-    if (c.isInfo) continue;
+  // ---- Mode: circles ----
+  if (currentMode === "circles") {
+    for (const c of circles) {
+      c.p += dt * (PI * 0.18 + c.s * 0.06);
 
-    c.p += dt * (PI * 0.18 + c.s * 0.06);
+      c.squashPhase += dt * c.squashSpeed * (0.8 + 1.4 * rainN);
+      c.rotPhase    += dt * c.rotSpeed * (0.7 + 1.2 * windN);
+      const osc = Math.sin(c.squashPhase);
+      c.squash = (c.squashBase + c.squashMax * squashWeather) * osc;
+      c.rot = (Math.sin(c.rotPhase) * 0.35) * (0.15 + 0.85 * windN);
 
-    c.squashPhase += dt * c.squashSpeed * (0.8 + 1.4 * rainN);
-    c.rotPhase    += dt * c.rotSpeed * (0.7 + 1.2 * windN);
-    const osc = Math.sin(c.squashPhase);
-    c.squash = (c.squashBase + c.squashMax * squashWeather) * osc;
-    c.rot = (Math.sin(c.rotPhase) * 0.35) * (0.15 + 0.85 * windN);
+      const hx = Math.sin(c.p) * (0.9 + 1.3 * (1 - rainN));
+      const hy = Math.cos(c.p / PI) * (0.9 + 1.3 * (1 - rainN));
 
-    const hx = Math.sin(c.p) * (0.9 + 1.3 * (1 - rainN));
-    const hy = Math.cos(c.p / PI) * (0.9 + 1.3 * (1 - rainN));
+      const sunMode = isDayEffective() && rainN < 0.02;
 
-    const sunMode = isDayEffective() && rainN < 0.02;
+      if (sunMode) {
+        c.x += (Math.cos(c.p) * 18 + hx) * dt;
+        c.y += (Math.sin(c.p) * 10 + hy) * dt;
+        c.y -= dt * (6 + 10 * tN) * 0.9;
+        c.y += (H * 0.35 - c.y) * dt * 0.05;
+      } else {
+        c.y += base * (0.3 + 2.0 * rainN) * dt * 0.9;
+        c.x += hx * dt * 2;
+      }
 
-    if (sunMode) {
-      c.x += (Math.cos(c.p) * 18 + hx) * dt;
-      c.y += (Math.sin(c.p) * 10 + hy) * dt;
-      c.y -= dt * (6 + 10 * tN) * 0.9;
-      c.y += (H * 0.35 - c.y) * dt * 0.05;
-    } else {
-      c.y += base * (0.3 + 2.0 * rainN) * dt * 0.9;
-      c.x += hx * dt * 2;
+      c.x += wx * base * (0.5 + 1.2 * windN) * dt;
+      c.y += wy * base * (0.5 + 1.2 * windN) * dt;
+
+      if (vibr > 0) {
+        c.x += Math.sin(ms / 35 + c.p) * vibr * dt * 60;
+        c.y += Math.cos(ms / 41 + c.p) * vibr * dt * 60;
+      }
+
+      if (c.x < -c.r) c.x = W + c.r;
+      if (c.x > W + c.r) c.x = -c.r;
+      if (c.y < -c.r) c.y = H + c.r;
+      if (c.y > H + c.r) c.y = -c.r;
     }
-
-    c.x += wx * base * (0.5 + 1.2 * windN) * dt;
-    c.y += wy * base * (0.5 + 1.2 * windN) * dt;
-
-    if (vibr > 0) {
-      c.x += Math.sin(ms / 35 + c.h) * vibr * dt * 60;
-      c.y += Math.cos(ms / 41 + c.h) * vibr * dt * 60;
-    }
-
-    if (c.x < -c.r) c.x = W + c.r;
-    if (c.x > W + c.r) c.x = -c.r;
-    if (c.y < -c.r) c.y = H + c.r;
-    if (c.y > H + c.r) c.y = -c.r;
   }
 
-  if (infoCircle) {
-    const mul = infoCircle.speedMul || 1.75;
+  // ---- Mode: splash ----
+  if (currentMode === "splash") {
+    // pioggia => più espansione (breathing più forte + più instabile)
+    const expand = lerp(0.08, 0.55, rainN);
+    const storm = clamp(rainN * 0.8 + windN * 0.35, 0, 1);
+
+    for (const s of splashes) {
+      s.p += dt * s.wob * (0.7 + 1.6 * storm);
+      s.rot += dt * s.rotSpeed * (0.4 + 1.4 * windN);
+
+      // vento sposta lo schizzo
+      s.x += wx * base * s.drift * dt * 1.35;
+      s.y += wy * base * s.drift * dt * 1.35;
+
+      // gravità lieve quando piove
+      s.y += base * (0.12 + 0.55 * rainN) * dt * 0.35;
+
+      // vibrazione sveglia
+      if (vibr > 0) {
+        s.x += Math.sin(ms / 28 + s.p) * vibr * dt * 55;
+        s.y += Math.cos(ms / 33 + s.p) * vibr * dt * 55;
+      }
+
+      // wrap
+      const pad = 120;
+      if (s.x < -pad) s.x = W + pad;
+      if (s.x > W + pad) s.x = -pad;
+      if (s.y < -pad) s.y = H + pad;
+      if (s.y > H + pad) s.y = -pad;
+
+      // breathing factor computed in draw via s.p, expand, storm
+      s._expand = expand;
+      s._storm = storm;
+    }
+  }
+
+  // ---- Mode: diamonds ----
+  if (currentMode === "diamonds") {
+    const storm = clamp(rainN * 0.7 + windN * 0.4, 0, 1);
+
+    for (const d of diamonds) {
+      d.a += dt * d.spin * (0.6 + 1.8 * windN);
+      d.skewPhase += dt * d.skewSpeed * (0.7 + 1.3 * storm);
+
+      // drift + wind vector
+      d.x += (d.vx + wx * base * 1.6) * dt;
+      d.y += (d.vy + wy * base * 1.6) * dt;
+
+      // rain adds down force
+      d.y += base * (0.05 + 0.45 * rainN) * dt;
+
+      if (vibr > 0) {
+        d.x += Math.sin(ms / 31 + d.a) * vibr * dt * 60;
+        d.y += Math.cos(ms / 37 + d.a) * vibr * dt * 60;
+      }
+
+      const pad = 140;
+      if (d.x < -pad) d.x = W + pad;
+      if (d.x > W + pad) d.x = -pad;
+      if (d.y < -pad) d.y = H + pad;
+      if (d.y > H + pad) d.y = -pad;
+    }
+  }
+
+  // ---- Pink dot (always bounce) ----
+  if (infoDot) {
     const speedWeather = lerp(0.85, 1.25, clamp(tN * 0.7 + rainN * 0.5 + windN * 0.2, 0, 1));
-    const speed = mul * speedWeather;
+    const speed = infoDot.speedMul * speedWeather;
 
-    infoCircle.squashPhase += dt * infoCircle.squashSpeed * (1.0 + 1.6 * rainN);
-    infoCircle.rotPhase    += dt * infoCircle.rotSpeed * (0.8 + 1.6 * windN);
-    const oscP = Math.sin(infoCircle.squashPhase);
-    infoCircle.squash = (infoCircle.squashBase + infoCircle.squashMax * squashWeather) * oscP;
-    infoCircle.rot = (Math.sin(infoCircle.rotPhase) * 0.6) * (0.15 + 0.85 * windN);
+    infoDot.squashPhase += dt * infoDot.squashSpeed * (1.0 + 1.6 * rainN);
+    infoDot.rotPhase    += dt * infoDot.rotSpeed * (0.8 + 1.6 * windN);
+    const oscP = Math.sin(infoDot.squashPhase);
+    infoDot.squash = (infoDot.squashBase + infoDot.squashMax * squashWeather) * oscP;
+    infoDot.rot = (Math.sin(infoDot.rotPhase) * 0.6) * (0.15 + 0.85 * windN);
 
-    infoCircle.vx += wx * 12 * dt;
-    infoCircle.vy += wy * 12 * dt;
+    infoDot.vx += wx * 12 * dt;
+    infoDot.vy += wy * 12 * dt;
 
-    // ✅ PINK "p" rotation slower (reduced multipliers)
-    infoCircle.p += dt * (PI * 0.14 + infoCircle.s * 0.06) * speed;
+    // slow p rotation (so it "turns" slower)
+    infoDot.p += dt * (PI * 0.14 + infoDot.s * 0.06) * speed;
 
-    const wobX = Math.sin(infoCircle.p) * (14 + 10 * (1 - rainN));
-    const wobY = Math.cos(infoCircle.p / PI) * (10 + 8 * (1 - rainN));
+    const wobX = Math.sin(infoDot.p) * (14 + 10 * (1 - rainN));
+    const wobY = Math.cos(infoDot.p / PI) * (10 + 8 * (1 - rainN));
 
-    infoCircle.x += (infoCircle.vx * dt) * speed + wobX * dt;
-    infoCircle.y += (infoCircle.vy * dt) * speed + wobY * dt;
+    infoDot.x += (infoDot.vx * dt) * speed + wobX * dt;
+    infoDot.y += (infoDot.vy * dt) * speed + wobY * dt;
 
     if (vibr > 0) {
-      infoCircle.x += Math.sin(ms / 35) * vibr * dt * 70;
-      infoCircle.y += Math.cos(ms / 41) * vibr * dt * 70;
+      infoDot.x += Math.sin(ms / 35) * vibr * dt * 70;
+      infoDot.y += Math.cos(ms / 41) * vibr * dt * 70;
     }
 
-    const r = infoCircle.r;
-    if (infoCircle.x <= r) { infoCircle.x = r; infoCircle.vx = Math.abs(infoCircle.vx); }
-    if (infoCircle.x >= W - r) { infoCircle.x = W - r; infoCircle.vx = -Math.abs(infoCircle.vx); }
-    if (infoCircle.y <= r) { infoCircle.y = r; infoCircle.vy = Math.abs(infoCircle.vy); }
-    if (infoCircle.y >= H - r) { infoCircle.y = H - r; infoCircle.vy = -Math.abs(infoCircle.vy); }
+    const r = infoDot.r;
+    if (infoDot.x <= r) { infoDot.x = r; infoDot.vx = Math.abs(infoDot.vx); }
+    if (infoDot.x >= W - r) { infoDot.x = W - r; infoDot.vx = -Math.abs(infoDot.vx); }
+    if (infoDot.y <= r) { infoDot.y = r; infoDot.vy = Math.abs(infoDot.vy); }
+    if (infoDot.y >= H - r) { infoDot.y = H - r; infoDot.vy = -Math.abs(infoDot.vy); }
   }
 
   if (alarmRinging && ms >= alarmEndsAt) stopAlarm();
 }
 
-// Draw
+// ===================== DRAW =====================
 function draw(ms) {
   ctx.fillStyle = bg();
   ctx.fillRect(0, 0, W, H);
 
+  if (currentMode === "circles") drawCircles(ms);
+  if (currentMode === "splash") drawSplashes(ms);
+  if (currentMode === "diamonds") drawDiamonds(ms);
+
+  drawPink(ms);
+}
+
+function drawCircles(ms) {
   const day = isDayEffective();
   ctx.strokeStyle = day ? "rgba(0,0,0,0.90)" : "rgba(255,255,255,0.95)";
   ctx.lineWidth = 2.6;
 
   ctx.beginPath();
   for (const c of circles) {
-    if (c.isInfo) continue;
     const rx = c.r * (1 + (c.squash || 0));
     const ry = c.r * (1 - (c.squash || 0));
     ctx.moveTo(c.x + rx, c.y);
-    ctx.ellipse(c.x, c.y, Math.max(1, rx), Math.max(1, ry), (c.rot || 0), 0, PI * 2);
+    ctx.ellipse(c.x, c.y, Math.max(1, rx), Math.max(1, ry), (c.rot || 0), 0, TAU);
   }
   ctx.stroke();
+}
 
-  if (infoCircle) {
-    const pulse = 0.10 + 0.08 * Math.sin(ms / 850);
-    ctx.fillStyle = `rgba(255, 70, 170, ${0.92 + pulse})`;
-    const rx = infoCircle.r * (1 + (infoCircle.squash || 0));
-    const ry = infoCircle.r * (1 - (infoCircle.squash || 0));
+function drawSplashes(ms) {
+  // Always BLACK as requested
+  // very slightly softer at night
+  const alpha = isDayEffective() ? 0.92 : 0.78;
+  ctx.fillStyle = `rgba(0,0,0,${alpha})`;
+
+  for (const s of splashes) {
+    const rainN = clamp(weather.rainMm / 10, 0, 1);
+    const windN = clamp(weather.windMs / 12, 0, 1);
+
+    // breathing amplitude grows with rain
+    const breathe = 1 + Math.sin(s.p) * (s._expand || 0.2);
+    const jitter = 0.10 + 0.25 * (s._storm || 0);
+    const base = s.base * breathe;
+
+    const pts = s.points;
+    const step = TAU / pts;
+
     ctx.beginPath();
-    ctx.ellipse(infoCircle.x, infoCircle.y, Math.max(1, rx), Math.max(1, ry), (infoCircle.rot || 0), 0, PI * 2);
+    for (let i = 0; i < pts; i++) {
+      const a = i * step + s.rot;
+      const wave = Math.sin(s.p * 0.9 + s.phases[i]) * (s.amps[i] * jitter);
+      const r = base * (1 + wave);
+
+      const x = s.x + Math.cos(a) * r;
+      const y = s.y + Math.sin(a) * r;
+
+      if (i === 0) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
+    }
+    ctx.closePath();
+
+    // Optional “splatter drops” when rain is strong (still black)
+    if (rainN > 0.55) {
+      const drops = Math.floor(lerp(0, 4, clamp((rainN - 0.55) / 0.45, 0, 1)));
+      for (let k = 0; k < drops; k++) {
+        const da = Math.random() * TAU;
+        const dr = base * lerp(0.9, 1.35, Math.random());
+        const dx = Math.cos(da) * dr + wxFromWind(windN);
+        const dy = Math.sin(da) * dr;
+        ctx.moveTo(s.x + dx, s.y + dy);
+        ctx.arc(s.x + dx, s.y + dy, lerp(2, 6, Math.random()), 0, TAU);
+      }
+    }
+
     ctx.fill();
   }
 }
 
-/* ===================== AUDIO ENGINE ===================== */
+function wxFromWind(windN) {
+  const dir = (weather.windDirDeg || 0) * PI / 180;
+  return Math.cos(dir) * windN * 18;
+}
 
+function drawDiamonds(ms) {
+  const tN = tempNorm(weather.tempC);
+  const rainN = clamp(weather.rainMm / 10, 0, 1);
+  const windN = clamp(weather.windMs / 12, 0, 1);
+  const storm = clamp(rainN * 0.7 + windN * 0.4, 0, 1);
+
+  for (const d of diamonds) {
+    const skew = Math.sin(d.skewPhase) * d.skewAmt * (0.35 + 0.95 * storm);
+    const sx = 1 + skew;
+    const sy = 1 - skew;
+
+    // diamonds brighten a bit during day, soften at night
+    const a = isDayEffective() ? d.alpha : d.alpha * 0.78;
+    ctx.fillStyle = hexToRgba(d.color, a);
+
+    const size = d.size * lerp(0.95, 1.15, tN);
+    const w = size * sx;
+    const h = size * sy;
+
+    // diamond points (rhombus)
+    const p0 = rotatePoint(0, -h, d.a);
+    const p1 = rotatePoint(w, 0, d.a);
+    const p2 = rotatePoint(0, h, d.a);
+    const p3 = rotatePoint(-w, 0, d.a);
+
+    ctx.beginPath();
+    ctx.moveTo(d.x + p0.x, d.y + p0.y);
+    ctx.lineTo(d.x + p1.x, d.y + p1.y);
+    ctx.lineTo(d.x + p2.x, d.y + p2.y);
+    ctx.lineTo(d.x + p3.x, d.y + p3.y);
+    ctx.closePath();
+    ctx.fill();
+  }
+}
+
+function rotatePoint(x, y, a) {
+  const c = Math.cos(a), s = Math.sin(a);
+  return { x: x * c - y * s, y: x * s + y * c };
+}
+
+function hexToRgba(hex, a) {
+  const h = hex.replace("#", "").trim();
+  const full = h.length === 3
+    ? h.split("").map(ch => ch + ch).join("")
+    : h;
+  const n = parseInt(full, 16);
+  const r = (n >> 16) & 255;
+  const g = (n >> 8) & 255;
+  const b = n & 255;
+  return `rgba(${r},${g},${b},${a})`;
+}
+
+function drawPink(ms) {
+  if (!infoDot) return;
+  const pulse = 0.10 + 0.08 * Math.sin(ms / 850);
+  ctx.fillStyle = `rgba(255, 70, 170, ${0.92 + pulse})`;
+
+  const rx = infoDot.r * (1 + (infoDot.squash || 0));
+  const ry = infoDot.r * (1 - (infoDot.squash || 0));
+
+  ctx.beginPath();
+  ctx.ellipse(infoDot.x, infoDot.y, Math.max(1, rx), Math.max(1, ry), (infoDot.rot || 0), 0, TAU);
+  ctx.fill();
+}
+
+// ===================== AUDIO (same engine: genres + meteo tempo + night soft) =====================
 let audioCtx = null;
 let master = null;
 let timbreLP = null;
@@ -464,7 +745,7 @@ const GENRE = {
   }
 };
 
-// Volume persistence
+// volume
 let userVolume = 0.60;
 (function loadVolume() {
   try {
@@ -478,12 +759,12 @@ volSlider.addEventListener("input", () => {
   userVolume = clamp(Number(volSlider.value) / 100, 0, 1);
   volVal.textContent = `${Math.round(userVolume * 100)}%`;
   try { localStorage.setItem("pi_volume", String(userVolume)); } catch {}
-  if (master && audioCtx) master.gain.setTargetAtTime(master.gain.value, audioCtx.currentTime, 0.01);
 });
 
 function setAudioButton() {
   btnAudio.textContent = audioOn ? "Audio: ON" : "Audio: OFF";
 }
+
 async function enableAudio() {
   if (audioOn) return;
   audioOn = true;
@@ -540,6 +821,7 @@ async function enableAudio() {
     try { await audioCtx.resume(); } catch {}
   }
 }
+
 async function disableAudio() {
   if (!audioOn) return;
   audioOn = false;
@@ -548,9 +830,7 @@ async function disableAudio() {
   try {
     if (audioCtx && audioCtx.state !== "closed") {
       master.gain.setTargetAtTime(0.0001, audioCtx.currentTime, 0.04);
-      setTimeout(() => {
-        try { audioCtx.close(); } catch {}
-      }, 200);
+      setTimeout(() => { try { audioCtx.close(); } catch {} }, 200);
     }
   } catch {}
 
@@ -609,10 +889,9 @@ function updateTimbre() {
   if (!isDayEffective()) cutoff *= 0.72;
   timbreLP.frequency.setTargetAtTime(cutoff, audioCtx.currentTime, 0.12);
 
-  // master gain: apply userVolume + meteo + night softness
   let g = (0.045 + 0.020 * tN + 0.012 * rainN);
   if (!isDayEffective()) g *= 0.72;
-  g *= userVolume; // ✅ user volume
+  g *= userVolume;
   master.gain.setTargetAtTime(clamp(g, 0.0001, 0.10), audioCtx.currentTime, 0.18);
 }
 
@@ -627,6 +906,7 @@ function setPadVoicing(root, semis, genreCfg) {
     const v = padOsc[i];
     v.o.type = (i % 2 === 0) ? aType : bType;
     v.o.detune.value = (i - (padOsc.length - 1) / 2) * det;
+
     const semi = semis[i % semis.length] + (i >= semis.length ? 12 : 0);
     const hz = root * Math.pow(2, semi / 12);
     v.o.frequency.setTargetAtTime(hz, audioCtx.currentTime, 0.08);
@@ -830,7 +1110,7 @@ function updateMusic(ms) {
   playPerc(ms, bpm, genreCfg);
 }
 
-/* ===================== ALARM ===================== */
+// ===================== ALARM =====================
 let alarmNode = null;
 
 function loadAlarm() {
@@ -871,7 +1151,6 @@ function stopAlarm() {
   nextMelodyAtMs = 0;
   nextPercAtMs = 0;
 }
-
 alarmTest.onclick = () => startAlarm(8000);
 alarmStop.onclick = () => stopAlarm();
 
@@ -953,7 +1232,7 @@ function playTrumpet(durationMs) {
   alarmNode = o1;
 }
 
-// Main loop
+// ===================== LOOP =====================
 let last = performance.now();
 function loop(ms) {
   const dt = clamp((ms - last) / 1000, 0, 0.05);
@@ -971,3 +1250,6 @@ requestAnimationFrame(loop);
 
 toggleNight.onchange = () => updateConsoleValues();
 updateConsoleValues();
+
+// ensure art initialized when user chooses “USE LAST”
+initArt(currentMode);
