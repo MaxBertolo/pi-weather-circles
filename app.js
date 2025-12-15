@@ -1,10 +1,9 @@
 // π Weather Art — 3 modes: circles / splash / diamonds
-// - same background, weather, audio, alarm, menu
-// - pink dot always present; opens menu; bounces; rotates slower
-// UPDATE (this version):
-// - Tap bottom-right corner => open mode picker (CERCHI/SPLASH/DIAMANTI)
-// - Bottom-left label shows current mode
-// - Bottom-right shows signature "MB" in italic
+// - Tap bottom-right => mode picker
+// - Bottom-left shows current mode label
+// - Bottom-right signature "MB" italic
+// - Pink dot opens menu
+// - Endless generative music (no fixed loops), weather/season/day-night driven
 
 const canvas = document.getElementById("c");
 const ctx = canvas.getContext("2d", { alpha: false });
@@ -197,7 +196,7 @@ function bg() {
 
   if (stormN > 0.65) {
     const t = clamp((stormN - 0.65) / 0.35, 0, 1);
-    const v = Math.floor(lerp(215, 150, t));
+    const v = Math.floor(lerp(225, 155, t));
     return `rgb(${v},${v},${v})`;
   }
 
@@ -238,13 +237,11 @@ modePicker.addEventListener("click", (e) => {
   initArt(currentMode);
   hideModePicker();
 });
-
 btnSkip.addEventListener("click", () => {
   loadMode();
   initArt(currentMode);
   hideModePicker();
 });
-
 artModeSel.addEventListener("change", () => {
   const m = artModeSel.value;
   saveMode(m);
@@ -259,7 +256,7 @@ let circles = [];
 let splashes = [];
 let diamonds = [];
 
-// Diamonds palette matched to screenshot background
+// Diamonds palette (background polygons)
 const DIAMOND_PALETTE = [
   "#BA5900", "#FF8100", "#088DEF", "#0B24C5", "#7B1DEF", "#62027D",
   "#D245D3", "#AE048F", "#FA01A9", "#E40674", "#CC021C", "#F17677"
@@ -277,15 +274,15 @@ function initArt(mode) {
     r: mmToPx(3),
     p: rng() * TAU,
     s: 1.0,
-    speedMul: 1.75,
-    vx: (rng() < 0.5 ? -1 : 1) * lerp(90, 170, rng()),
-    vy: (rng() < 0.5 ? -1 : 1) * lerp(90, 170, rng()),
+    speedMul: 1.65, // slightly calmer
+    vx: (rng() < 0.5 ? -1 : 1) * lerp(80, 155, rng()),
+    vy: (rng() < 0.5 ? -1 : 1) * lerp(80, 155, rng()),
     squashPhase: rng() * TAU,
     squashSpeed: 0.85,
     squashBase: 0.02,
     squashMax: 0.18,
     rotPhase: rng() * TAU,
-    rotSpeed: 0.35,
+    rotSpeed: 0.32, // slower rotation
     squash: 0,
     rot: 0
   };
@@ -359,6 +356,9 @@ function initArt(mode) {
       });
     }
   }
+
+  // also gently nudge music section (optional)
+  musicState.forceNewSection = true;
 }
 
 // initial
@@ -372,9 +372,8 @@ function hitBottomRight(x, y) {
   return (x >= W - zone && y >= H - zone);
 }
 
-// pink dot click -> menu, bottom-right -> picker
+// pointer handler: bottom-right => picker; pink dot => menu
 canvas.addEventListener("pointerdown", (e) => {
-  // if picker open or menu open, do nothing here
   if (!overlay.classList.contains("hidden")) return;
   if (isModePickerOpen()) return;
 
@@ -382,13 +381,11 @@ canvas.addEventListener("pointerdown", (e) => {
   const x = e.clientX - rect.left;
   const y = e.clientY - rect.top;
 
-  // bottom-right hot corner => mode picker
   if (hitBottomRight(x, y)) {
     showModePicker();
     return;
   }
 
-  // pink dot => menu
   if (!infoDot) return;
   const dx = x - infoDot.x;
   const dy = y - infoDot.y;
@@ -505,7 +502,6 @@ function step(dt, ms) {
     }
   }
 
-  // Pink dot
   if (infoDot) {
     const speedWeather = lerp(0.85, 1.25, clamp(tN * 0.7 + rainN * 0.5 + windN * 0.2, 0, 1));
     const speed = infoDot.speedMul * speedWeather;
@@ -528,8 +524,8 @@ function step(dt, ms) {
     infoDot.y += (infoDot.vy * dt) * speed + wobY * dt;
 
     if (vibr > 0) {
-      infoDot.x += Math.sin(ms / 35) * vibr * dt * 70;
-      infoDot.y += Math.cos(ms / 41) * vibr * dt * 70;
+      infoDot.x += Math.sin(performance.now() / 35) * vibr * dt * 70;
+      infoDot.y += Math.cos(performance.now() / 41) * vibr * dt * 70;
     }
 
     const r = infoDot.r;
@@ -591,19 +587,15 @@ function drawSplashes(ms) {
       const a = i * step + s.rot;
       const wave = Math.sin(s.p * 0.9 + s.phases[i]) * (s.amps[i] * jitter);
       const r = base * (1 + wave);
-
       const x = s.x + Math.cos(a) * r;
       const y = s.y + Math.sin(a) * r;
-
       if (i === 0) ctx.moveTo(x, y);
       else ctx.lineTo(x, y);
     }
     ctx.closePath();
     ctx.fill();
 
-    if (rainN > 0.35) {
-      drawRainDropletsForSplash(s, ms, base, rainN, windN, ang);
-    }
+    if (rainN > 0.35) drawRainDropletsForSplash(s, ms, base, rainN, windN, ang);
   }
 }
 
@@ -624,7 +616,6 @@ function drawRainDropletsForSplash(s, ms, base, rainN, windN, ang) {
     const lateral = side * base * lerp(0.15, 0.65, (Math.sin(seed * 1.7 + t * 0.9) * 0.5 + 0.5));
 
     const r = lerp(2.5, 9.0, rainN) * lerp(0.9, 1.15, windN);
-
     const x = lateral;
     const y = orbit;
 
@@ -647,7 +638,6 @@ function drawRainDropletsForSplash(s, ms, base, rainN, windN, ang) {
       ctx.fill();
     }
   }
-
   ctx.restore();
 }
 
@@ -702,23 +692,20 @@ function drawPink(ms) {
   if (!infoDot) return;
   const pulse = 0.10 + 0.08 * Math.sin(ms / 850);
   ctx.fillStyle = `rgba(255, 70, 170, ${0.92 + pulse})`;
-
   const rx = infoDot.r * (1 + (infoDot.squash || 0));
   const ry = infoDot.r * (1 - (infoDot.squash || 0));
-
   ctx.beginPath();
   ctx.ellipse(infoDot.x, infoDot.y, Math.max(1, rx), Math.max(1, ry), (infoDot.rot || 0), 0, TAU);
   ctx.fill();
 }
 
-// ---------- Footer: left mode label, right "MB" signature ----------
+// Footer: left mode label, right "MB"
 function drawFooter() {
   const pad = 18;
   const y = H - pad;
   const day = isDayEffective();
   const col = day ? "rgba(0,0,0,0.55)" : "rgba(255,255,255,0.65)";
 
-  // bottom-left current motif
   ctx.save();
   ctx.fillStyle = col;
   ctx.textBaseline = "alphabetic";
@@ -726,7 +713,6 @@ function drawFooter() {
   ctx.fillText(modeLabel(currentMode), pad, y);
   ctx.restore();
 
-  // bottom-right signature MB (italic)
   ctx.save();
   ctx.fillStyle = col;
   ctx.textAlign = "right";
@@ -736,84 +722,36 @@ function drawFooter() {
   ctx.restore();
 }
 
-// ===================== AUDIO (unchanged engine) =====================
+// ===================== AUDIO (ENDLESS GENERATIVE) =====================
 let audioCtx = null;
 let master = null;
 let timbreLP = null;
 let compressor = null;
+let reverb = null;
+let reverbWet = null;
+let reverbDry = null;
 
-let padBus = null;
-let chordBus = null;
-let melodyBus = null;
-let percBus = null;
+let busPad = null;
+let busArp = null;
+let busMel = null;
+let busBass = null;
+let busPerc = null;
 
-let padOsc = [];
 let audioOn = false;
+let userVolume = 0.65;
 
-let nextChordAtMs = 0;
-let nextMelodyAtMs = 0;
-let nextPercAtMs = 0;
+// deterministic-ish PRNG that evolves (never locks into short loop)
+let rngMusic = mulberry32((seasonSeed(seasonKey()) ^ 0xA5A5A5A5) >>> 0);
+function rand() { return rngMusic(); }
+function randRange(a,b){ return lerp(a,b,rand()); }
+function pick(arr){ return arr[Math.floor(rand()*arr.length) % arr.length]; }
+function chance(p){ return rand() < p; }
 
-let currentChord = [0, 4, 7, 11];
-let rootHz = 220;
+function setAudioButton() {
+  btnAudio.textContent = audioOn ? "Audio: ON" : "Audio: OFF";
+}
 
-const GENRE = {
-  jazz: {
-    chordPool: [
-      [0, 4, 7, 11, 14],
-      [0, 4, 7, 11, 14, 21],
-      [0, 3, 7, 10, 14],
-      [0, 3, 7, 10, 14, 21],
-      [0, 4, 7, 10, 14],
-      [0, 4, 7, 10, 14, 18],
-      [0, 3, 6, 10, 14]
-    ],
-    bpm: [62, 112],
-    pad: { typeA: "triangle", typeB: "sine", detune: 4 },
-    melody: { density: 0.85, swing: 0.58 },
-    perc: { hat: 0.9, kick: 0.35 }
-  },
-  soul: {
-    chordPool: [
-      [0, 4, 7, 11, 14],
-      [0, 3, 7, 10, 14],
-      [0, 4, 7, 10, 14],
-      [0, 3, 7, 10, 14, 17]
-    ],
-    bpm: [58, 102],
-    pad: { typeA: "sine", typeB: "triangle", detune: 3 },
-    melody: { density: 0.65, swing: 0.54 },
-    perc: { hat: 0.7, kick: 0.45 }
-  },
-  blues: {
-    chordPool: [
-      [0, 4, 7, 10],
-      [0, 4, 7, 10, 14],
-      [0, 3, 7, 10],
-      [0, 4, 6, 10, 13]
-    ],
-    bpm: [54, 96],
-    pad: { typeA: "triangle", typeB: "sawtooth", detune: 6 },
-    melody: { density: 0.55, swing: 0.60 },
-    perc: { hat: 0.75, kick: 0.55 }
-  },
-  classical: {
-    chordPool: [
-      [0, 4, 7, 11],
-      [0, 3, 7, 10],
-      [0, 4, 7],
-      [0, 3, 7],
-      [0, 4, 7, 14]
-    ],
-    bpm: [48, 92],
-    pad: { typeA: "sine", typeB: "sine", detune: 2 },
-    melody: { density: 0.45, swing: 0.50 },
-    perc: { hat: 0.35, kick: 0.15 }
-  }
-};
-
-// volume
-let userVolume = 0.60;
+// volume load/save
 (function loadVolume() {
   try {
     const v = Number(localStorage.getItem("pi_volume"));
@@ -828,8 +766,46 @@ volSlider.addEventListener("input", () => {
   try { localStorage.setItem("pi_volume", String(userVolume)); } catch {}
 });
 
-function setAudioButton() {
-  btnAudio.textContent = audioOn ? "Audio: ON" : "Audio: OFF";
+audioGenreSel.addEventListener("change", () => {
+  try { localStorage.setItem("pi_genre", audioGenreSel.value); } catch {}
+  musicState.forceNewSection = true;
+});
+(function loadGenre() {
+  try {
+    const g = localStorage.getItem("pi_genre");
+    if (g) audioGenreSel.value = g;
+  } catch {}
+})();
+
+async function hardResumeAudio() {
+  try {
+    if (audioCtx && audioCtx.state !== "running") await audioCtx.resume();
+  } catch {}
+}
+document.addEventListener("pointerdown", () => { hardResumeAudio(); }, { passive: true });
+document.addEventListener("touchend",  () => { hardResumeAudio(); }, { passive: true });
+document.addEventListener("click",     () => { hardResumeAudio(); }, { passive: true });
+
+btnAudio.addEventListener("click", () => {
+  if (!audioOn) enableAudio();
+  else disableAudio();
+});
+setAudioButton();
+
+function makeImpulse(ctx, seconds = 2.2, decay = 2.6) {
+  const rate = ctx.sampleRate;
+  const len = Math.floor(rate * seconds);
+  const buf = ctx.createBuffer(2, len, rate);
+  for (let ch = 0; ch < 2; ch++) {
+    const data = buf.getChannelData(ch);
+    for (let i = 0; i < len; i++) {
+      const t = i / len;
+      const env = Math.pow(1 - t, decay);
+      // slightly colored noise
+      data[i] = (Math.random() * 2 - 1) * env * (0.65 + 0.35 * Math.sin(i * 0.001));
+    }
+  }
+  return buf;
 }
 
 async function enableAudio() {
@@ -844,49 +820,68 @@ async function enableAudio() {
 
   timbreLP = audioCtx.createBiquadFilter();
   timbreLP.type = "lowpass";
-  timbreLP.frequency.value = 6000;
+  timbreLP.frequency.value = 8000;
   timbreLP.Q.value = 0.8;
 
   compressor = audioCtx.createDynamicsCompressor();
   compressor.threshold.value = -22;
-  compressor.knee.value = 20;
-  compressor.ratio.value = 4;
+  compressor.knee.value = 24;
+  compressor.ratio.value = 3.3;
   compressor.attack.value = 0.01;
-  compressor.release.value = 0.2;
+  compressor.release.value = 0.20;
 
-  padBus = audioCtx.createGain();   padBus.gain.value = 0.60;
-  chordBus = audioCtx.createGain(); chordBus.gain.value = 0.55;
-  melodyBus = audioCtx.createGain();melodyBus.gain.value = 0.65;
-  percBus = audioCtx.createGain();  percBus.gain.value = 0.45;
+  // Reverb send/return
+  reverb = audioCtx.createConvolver();
+  reverb.buffer = makeImpulse(audioCtx, 2.4, 2.8);
+  reverbWet = audioCtx.createGain();
+  reverbDry = audioCtx.createGain();
+  reverbWet.gain.value = 0.28;
+  reverbDry.gain.value = 0.92;
 
-  padBus.connect(timbreLP);
-  chordBus.connect(timbreLP);
-  melodyBus.connect(timbreLP);
-  percBus.connect(timbreLP);
+  // Buses
+  busPad  = audioCtx.createGain();  busPad.gain.value  = 0.55;
+  busArp  = audioCtx.createGain();  busArp.gain.value  = 0.60;
+  busMel  = audioCtx.createGain();  busMel.gain.value  = 0.68;
+  busBass = audioCtx.createGain();  busBass.gain.value = 0.60;
+  busPerc = audioCtx.createGain();  busPerc.gain.value = 0.42;
 
+  // route to dry + wet
+  const buses = [busPad, busArp, busMel, busBass, busPerc];
+  for (const b of buses) {
+    b.connect(reverbDry);
+    b.connect(reverbWet);
+  }
+  reverbWet.connect(reverb);
+  reverb.connect(timbreLP);
+
+  reverbDry.connect(timbreLP);
   timbreLP.connect(compressor);
   compressor.connect(master);
   master.connect(audioCtx.destination);
 
-  padOsc = [];
-  for (let i = 0; i < 6; i++) {
-    const o = audioCtx.createOscillator();
-    const g = audioCtx.createGain();
-    o.frequency.value = 220;
-    g.gain.value = 0.0001;
-    o.connect(g);
-    g.connect(padBus);
-    o.start();
-    padOsc.push({ o, g });
-  }
-
-  nextChordAtMs = 0;
-  nextMelodyAtMs = 0;
-  nextPercAtMs = 0;
+  // reset scheduler
+  musicState.reset(audioCtx);
 
   if (audioCtx.state === "suspended") {
     try { await audioCtx.resume(); } catch {}
   }
+
+  // short test beep (quiet)
+  try {
+    const o = audioCtx.createOscillator();
+    const g = audioCtx.createGain();
+    o.type = "sine";
+    o.frequency.value = 440;
+    g.gain.value = 0.0001;
+    o.connect(g);
+    g.connect(audioCtx.destination);
+    const t0 = audioCtx.currentTime + 0.01;
+    g.gain.setValueAtTime(0.0001, t0);
+    g.gain.linearRampToValueAtTime(0.02, t0 + 0.02);
+    g.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.15);
+    o.start(t0);
+    o.stop(t0 + 0.18);
+  } catch {}
 }
 
 async function disableAudio() {
@@ -905,277 +900,521 @@ async function disableAudio() {
   master = null;
   timbreLP = null;
   compressor = null;
-  padBus = chordBus = melodyBus = percBus = null;
-  padOsc = [];
+  reverb = null;
+  reverbWet = null;
+  reverbDry = null;
+
+  busPad = busArp = busMel = busBass = busPerc = null;
 }
 
-btnAudio.addEventListener("click", () => {
-  if (!audioOn) enableAudio();
-  else disableAudio();
-});
-
-audioGenreSel.addEventListener("change", () => {
-  try { localStorage.setItem("pi_genre", audioGenreSel.value); } catch {}
-});
-(function loadGenre() {
-  try {
-    const g = localStorage.getItem("pi_genre");
-    if (g && GENRE[g]) audioGenreSel.value = g;
-  } catch {}
-})();
-setAudioButton();
-
-document.addEventListener("pointerdown", async () => {
-  if (audioCtx && audioCtx.state === "suspended") {
-    try { await audioCtx.resume(); } catch {}
-  }
-}, { passive: true });
-
-function weatherDrivenTempo(genreCfg) {
-  const tN = tempNorm(weather.tempC);
-  const rainN = clamp(weather.rainMm / 10, 0, 1);
-  const { windN } = windVec();
-
-  const energy = clamp(tN * 0.65 + rainN * 0.55 + windN * 0.20, 0, 1);
-  const [b0, b1] = genreCfg.bpm;
-  let bpm = lerp(b0, b1, energy);
-  if (!isDayEffective()) bpm *= 0.86;
-  return clamp(bpm, 38, 132);
-}
-
-function updateTimbre() {
+// ----- Weather-driven timbre + loudness (soft but present) -----
+function updateTimbreAndGain() {
   if (!audioCtx) return;
 
   const cloudN = clamp(weather.cloudCover / 100, 0, 1);
   const fogN = clamp(weather.fog, 0, 1);
   const rainN = clamp(weather.rainMm / 10, 0, 1);
+  const windN = clamp(weather.windMs / 12, 0, 1);
   const tN = tempNorm(weather.tempC);
 
-  const muffle = clamp(fogN * 0.75 + cloudN * 0.55, 0, 1);
-  let cutoff = lerp(8200, 700, muffle);
+  // muffled when fog/cloud, darker at night
+  const muffle = clamp(fogN * 0.80 + cloudN * 0.55, 0, 1);
+  let cutoff = lerp(9000, 900, muffle);
   if (!isDayEffective()) cutoff *= 0.72;
-  timbreLP.frequency.setTargetAtTime(cutoff, audioCtx.currentTime, 0.12);
+  timbreLP.frequency.setTargetAtTime(cutoff, audioCtx.currentTime, 0.18);
 
-  let g = (0.045 + 0.020 * tN + 0.012 * rainN);
-  if (!isDayEffective()) g *= 0.72;
+  // reverb wetter in fog/cloud, drier in sun
+  let wet = lerp(0.18, 0.42, clamp(muffle * 0.9 + rainN * 0.25, 0, 1));
+  if (!isDayEffective()) wet *= 1.10;
+  reverbWet.gain.setTargetAtTime(clamp(wet, 0.10, 0.55), audioCtx.currentTime, 0.20);
+
+  // overall gain (more present than before, still safe)
+  const energy = clamp(tN * 0.55 + rainN * 0.50 + windN * 0.20, 0, 1);
+  let g = lerp(0.050, 0.095, energy);
+  if (!isDayEffective()) g *= 0.78;
   g *= userVolume;
-  master.gain.setTargetAtTime(clamp(g, 0.0001, 0.10), audioCtx.currentTime, 0.18);
+  master.gain.setTargetAtTime(clamp(g, 0.0001, 0.14), audioCtx.currentTime, 0.25);
 }
 
-function setPadVoicing(root, semis, genreCfg) {
-  if (!audioCtx) return;
+// ===================== MUSIC ENGINE (endless, non-looping) =====================
 
-  const det = genreCfg.pad.detune;
-  const aType = genreCfg.pad.typeA;
-  const bType = genreCfg.pad.typeB;
+// scale degrees (semitones) for modes
+const SCALES = {
+  ionian:    [0, 2, 4, 5, 7, 9, 11],
+  dorian:    [0, 2, 3, 5, 7, 9, 10],
+  aeolian:   [0, 2, 3, 5, 7, 8, 10],
+  lydian:    [0, 2, 4, 6, 7, 9, 11],
+  mixolyd:   [0, 2, 4, 5, 7, 9, 10],
+  pentMaj:   [0, 2, 4, 7, 9],
+  pentMin:   [0, 3, 5, 7, 10],
+  blues:     [0, 3, 5, 6, 7, 10]
+};
 
-  for (let i = 0; i < padOsc.length; i++) {
-    const v = padOsc[i];
-    v.o.type = (i % 2 === 0) ? aType : bType;
-    v.o.detune.value = (i - (padOsc.length - 1) / 2) * det;
+// chord qualities (stacked thirds)
+const QUAL = {
+  maj7:  [0, 4, 7, 11],
+  min7:  [0, 3, 7, 10],
+  dom7:  [0, 4, 7, 10],
+  m9:    [0, 3, 7, 10, 14],
+  M9:    [0, 4, 7, 11, 14],
+  sus9:  [0, 5, 7, 10, 14],
+  add9:  [0, 4, 7, 14],
+  dim7:  [0, 3, 6, 9],
+};
 
-    const semi = semis[i % semis.length] + (i >= semis.length ? 12 : 0);
-    const hz = root * Math.pow(2, semi / 12);
-    v.o.frequency.setTargetAtTime(hz, audioCtx.currentTime, 0.08);
+// gentle “progression Markov” per season (degrees 1..7)
+const MARKOV = {
+  winter: { 1:[4,6], 2:[5], 3:[6], 4:[1,2,5], 5:[1,6], 6:[2,4], 7:[1,3] },
+  spring: { 1:[4,5,6], 2:[5,7], 3:[6], 4:[1,2,5], 5:[1,6], 6:[2,4,5], 7:[1] },
+  summer: { 1:[4,5,6], 2:[5], 3:[6,4], 4:[1,2,5], 5:[1,6], 6:[2,4,5], 7:[1,3] },
+  autumn: { 1:[4,6], 2:[5,7], 3:[6], 4:[1,2,5], 5:[1,6], 6:[2,4], 7:[1] }
+};
 
-    const base = !isDayEffective() ? 0.010 : 0.014;
-    v.g.gain.setTargetAtTime(base, audioCtx.currentTime, 0.18);
-  }
+// choose musical “mode” based on genre + season + day/night
+function chooseModeAndScale() {
+  const sk = seasonKey();
+  const genre = (audioGenreSel.value || "jazz");
+  const day = isDayEffective();
+  const rainN = clamp(weather.rainMm / 10, 0, 1);
+  const fogN = clamp(weather.fog, 0, 1);
+
+  // fog/cloud = more modal / minor; sun = more major/pentatonic
+  const dark = clamp((fogN*0.8 + rainN*0.6 + (day?0:0.55)), 0, 1);
+
+  if (genre === "blues") return { mode: "blues", scale: SCALES.blues };
+  if (genre === "soul")  return { mode: dark > 0.55 ? "dorian" : "mixolyd", scale: dark > 0.55 ? SCALES.dorian : SCALES.mixolyd };
+  if (genre === "classical") return { mode: dark > 0.55 ? "aeolian" : "ionian", scale: dark > 0.55 ? SCALES.aeolian : SCALES.ionian };
+
+  // jazz default
+  if (sk === "winter") return { mode: dark > 0.45 ? "dorian" : "lydian", scale: dark > 0.45 ? SCALES.dorian : SCALES.lydian };
+  if (sk === "summer") return { mode: dark > 0.45 ? "mixolyd" : "pentMaj", scale: dark > 0.45 ? SCALES.mixolyd : SCALES.pentMaj };
+  if (sk === "spring") return { mode: dark > 0.45 ? "dorian" : "ionian", scale: dark > 0.45 ? SCALES.dorian : SCALES.ionian };
+  return { mode: dark > 0.45 ? "aeolian" : "dorian", scale: dark > 0.45 ? SCALES.aeolian : SCALES.dorian };
 }
 
-function pickChord(genreCfg) {
+function midiToHz(m) { return 440 * Math.pow(2, (m - 69) / 12); }
+function clampMidi(m){ return clamp(m, 30, 96); }
+
+function weatherTempoBpm() {
   const tN = tempNorm(weather.tempC);
   const rainN = clamp(weather.rainMm / 10, 0, 1);
+  const windN = clamp(weather.windMs / 12, 0, 1);
   const cloudN = clamp(weather.cloudCover / 100, 0, 1);
-  const idx = Math.floor((tN * 1.7 + rainN * 2.2 + cloudN * 1.1) * 3.1) % genreCfg.chordPool.length;
-  return genreCfg.chordPool[(idx + (seasonKey() === "winter" ? 1 : 0)) % genreCfg.chordPool.length];
+
+  const energy = clamp(tN * 0.60 + rainN * 0.55 + windN * 0.25 + cloudN * 0.10, 0, 1);
+  let bpm = lerp(52, 104, energy);
+
+  const genre = (audioGenreSel.value || "jazz");
+  if (genre === "classical") bpm *= 0.88;
+  if (genre === "blues") bpm *= 0.92;
+  if (!isDayEffective()) bpm *= 0.82;
+
+  return clamp(bpm, 40, 118);
 }
 
-function playChordStab(root, semis, vel, dur) {
-  if (!audioCtx) return;
-
-  const t0 = audioCtx.currentTime + 0.01;
-  const g = audioCtx.createGain();
-  g.gain.value = 0.0001;
-  g.connect(chordBus);
-
+// instrument voice helpers
+function envGain(g, t0, a=0.02, d=0.20, s=0.6, r=0.25, hold=0.18, peak=0.12) {
+  // ADSR-ish, but short and musical
+  g.gain.cancelScheduledValues(t0);
   g.gain.setValueAtTime(0.0001, t0);
-  g.gain.linearRampToValueAtTime(vel, t0 + 0.03);
-  g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
-
-  semis.slice(0, 5).forEach((s, i) => {
-    const o = audioCtx.createOscillator();
-    o.type = "sine";
-    o.detune.value = (i - 2) * 3.5;
-    o.frequency.value = root * Math.pow(2, s / 12);
-    o.connect(g);
-    o.start(t0);
-    o.stop(t0 + dur + 0.05);
-  });
+  g.gain.linearRampToValueAtTime(peak, t0 + a);
+  g.gain.linearRampToValueAtTime(peak * s, t0 + a + d);
+  g.gain.setValueAtTime(peak * s, t0 + a + d + hold);
+  g.gain.exponentialRampToValueAtTime(0.0001, t0 + a + d + hold + r);
 }
 
-function playNote(freq, when, dur, vel, type = "sine") {
+function makeVoice({type="sine", freq=440, when=0, dur=0.3, vel=0.06, bus, detune=0, cutoff=0}) {
   if (!audioCtx) return;
+
   const o = audioCtx.createOscillator();
   const g = audioCtx.createGain();
+  const f = audioCtx.createBiquadFilter();
+
   o.type = type;
   o.frequency.setValueAtTime(freq, when);
+  o.detune.setValueAtTime(detune, when);
 
+  f.type = "lowpass";
+  f.frequency.setValueAtTime(cutoff > 0 ? cutoff : 12000, when);
+  f.Q.setValueAtTime(0.7, when);
+
+  o.connect(f);
+  f.connect(g);
+  g.connect(bus);
+
+  // envelope tuned per layer outside (we keep it simple here)
   g.gain.setValueAtTime(0.0001, when);
   g.gain.linearRampToValueAtTime(vel, when + 0.02);
   g.gain.exponentialRampToValueAtTime(0.0001, when + dur);
 
-  o.connect(g);
-  g.connect(melodyBus);
-
   o.start(when);
-  o.stop(when + dur + 0.05);
+  o.stop(when + dur + 0.06);
 }
 
-function playPerc(ms, bpm, genreCfg) {
+// percussion: soft hats/brush + kick
+function noiseHit(when, dur, vel, hpHz=2000) {
   if (!audioCtx) return;
-
-  const rainN = clamp(weather.rainMm / 10, 0, 1);
-  const { windN } = windVec();
-
-  let dens = clamp(0.10 + rainN * 0.55 + windN * 0.25, 0, 0.95);
-  if (!isDayEffective()) dens *= 0.65;
-
-  const beatMs = 60000 / bpm;
-  const stepMs = beatMs / 2;
-
-  while (ms >= nextPercAtMs) {
-    const t0 = audioCtx.currentTime + 0.01;
-
-    if (Math.random() < dens * genreCfg.perc.hat) {
-      const buf = audioCtx.createBuffer(1, audioCtx.sampleRate * 0.08, audioCtx.sampleRate);
-      const d = buf.getChannelData(0);
-      for (let i = 0; i < d.length; i++) d[i] = (Math.random()*2-1) * (1 - i / d.length);
-
-      const src = audioCtx.createBufferSource();
-      src.buffer = buf;
-
-      const hp = audioCtx.createBiquadFilter();
-      hp.type = "highpass";
-      hp.frequency.value = 2200;
-
-      const g = audioCtx.createGain();
-      g.gain.value = 0.0001;
-      g.gain.setValueAtTime(0.0001, t0);
-      g.gain.exponentialRampToValueAtTime(0.05 + 0.10 * dens, t0 + 0.004);
-      g.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.06);
-
-      src.connect(hp);
-      hp.connect(g);
-      g.connect(percBus);
-
-      src.start(t0);
-      src.stop(t0 + 0.07);
-    }
-
-    if (Math.random() < dens * genreCfg.perc.kick * (0.35 + rainN)) {
-      const o = audioCtx.createOscillator();
-      const g = audioCtx.createGain();
-      o.type = "sine";
-      o.frequency.setValueAtTime(110, t0);
-      o.frequency.exponentialRampToValueAtTime(55, t0 + 0.10);
-
-      g.gain.setValueAtTime(0.0001, t0);
-      g.gain.exponentialRampToValueAtTime(0.12, t0 + 0.01);
-      g.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.14);
-
-      o.connect(g);
-      g.connect(percBus);
-      o.start(t0);
-      o.stop(t0 + 0.18);
-    }
-
-    nextPercAtMs += stepMs * (0.85 + Math.random() * 0.5);
+  const sr = audioCtx.sampleRate;
+  const len = Math.floor(sr * dur);
+  const buf = audioCtx.createBuffer(1, len, sr);
+  const data = buf.getChannelData(0);
+  for (let i = 0; i < len; i++) {
+    const t = i / len;
+    const env = Math.pow(1 - t, 2.3);
+    data[i] = (Math.random()*2-1) * env;
   }
+  const src = audioCtx.createBufferSource();
+  src.buffer = buf;
+
+  const hp = audioCtx.createBiquadFilter();
+  hp.type = "highpass";
+  hp.frequency.setValueAtTime(hpHz, when);
+
+  const g = audioCtx.createGain();
+  g.gain.setValueAtTime(0.0001, when);
+  g.gain.linearRampToValueAtTime(vel, when + 0.005);
+  g.gain.exponentialRampToValueAtTime(0.0001, when + dur);
+
+  src.connect(hp);
+  hp.connect(g);
+  g.connect(busPerc);
+
+  src.start(when);
+  src.stop(when + dur + 0.02);
 }
 
-function playMelody(ms, bpm, genreCfg) {
+function kick(when, vel=0.10) {
   if (!audioCtx) return;
+  const o = audioCtx.createOscillator();
+  const g = audioCtx.createGain();
+  o.type = "sine";
+  o.frequency.setValueAtTime(90, when);
+  o.frequency.exponentialRampToValueAtTime(48, when + 0.10);
 
-  const tN = tempNorm(weather.tempC);
-  const rainN = clamp(weather.rainMm / 10, 0, 1);
-  const { windN } = windVec();
+  g.gain.setValueAtTime(0.0001, when);
+  g.gain.exponentialRampToValueAtTime(vel, when + 0.01);
+  g.gain.exponentialRampToValueAtTime(0.0001, when + 0.18);
 
-  const scale = (audioGenreSel.value === "blues")
-    ? [0, 3, 5, 6, 7, 10]
-    : [0, 2, 4, 7, 9, 11];
-
-  let dens = clamp(0.20 + genreCfg.melody.density * (tN * 0.65 + rainN * 0.35 + windN * 0.25), 0.15, 0.95);
-  if (!isDayEffective()) dens *= 0.60;
-
-  const beatMs = 60000 / bpm;
-  const stepMs = beatMs / 2;
-
-  while (ms >= nextMelodyAtMs) {
-    const now = audioCtx.currentTime;
-    if (Math.random() < dens) {
-      const deg = scale[Math.floor(Math.random() * scale.length)];
-      const octave = (Math.random() < 0.65) ? 12 : 24;
-
-      const swing = genreCfg.melody.swing;
-      const swingOffset = (Math.random() < 0.5) ? 0 : (beatMs/1000) * (swing - 0.5) * 0.35;
-
-      const semi = deg + octave + (Math.random() < 0.15 ? 1 : 0);
-      const freq = rootHz * Math.pow(2, semi / 12);
-
-      const vel = (0.03 + 0.05 * dens) * (isDayEffective() ? 1.0 : 0.72);
-      const dur = (0.10 + 0.22 * (1 - rainN)) * (isDayEffective() ? 1.0 : 1.15);
-
-      const type = (audioGenreSel.value === "jazz" || audioGenreSel.value === "soul") ? "triangle" : "sine";
-      playNote(freq, now + 0.02 + swingOffset, dur, vel, type);
-    }
-
-    nextMelodyAtMs += stepMs * (0.85 + Math.random() * 0.7);
-  }
+  o.connect(g);
+  g.connect(busPerc);
+  o.start(when);
+  o.stop(when + 0.20);
 }
 
-function updateMusic(ms) {
-  if (!audioOn || !audioCtx || alarmRinging) return;
+// ----- Long-form music state -----
+const musicState = {
+  ready: false,
+  forceNewSection: false,
 
-  const gName = audioGenreSel.value || "jazz";
-  const genreCfg = GENRE[gName] || GENRE.jazz;
+  bpm: 72,
+  beat: 60/72,
+  bar: (60/72)*4,
 
-  updateTimbre();
+  // musical center
+  keyMidi: 57,          // A3-ish base
+  scale: SCALES.dorian,
+  modeName: "dorian",
+  degree: 1,            // 1..7
 
-  const tN = tempNorm(weather.tempC);
-  rootHz = lerp(196, 294, tN);
-  if (!isDayEffective()) rootHz *= 0.92;
+  // melodic memory
+  melMidi: 72,          // C5-ish
+  melDir: 1,
 
-  const bpm = weatherDrivenTempo(genreCfg);
-  const beatMs = 60000 / bpm;
-  const barMs = beatMs * 4;
+  // scheduler
+  nextTime: 0,
+  lookAhead: 0.9,
+  step: 0.10,
 
-  if (nextChordAtMs === 0) {
-    nextChordAtMs = ms;
-    nextMelodyAtMs = ms;
-    nextPercAtMs = ms;
-  }
+  // section timing
+  sectionEndsAt: 0,
 
-  if (ms >= nextChordAtMs) {
-    const chord = pickChord(genreCfg);
-    currentChord = chord;
-    setPadVoicing(rootHz, currentChord, genreCfg);
+  reset(ctx) {
+    this.ready = true;
+    this.forceNewSection = true;
+    this.nextTime = ctx.currentTime + 0.12;
+    this.sectionEndsAt = ctx.currentTime + 0.1;
+    // evolve rng by time so it never returns to same orbit
+    rngMusic = mulberry32(((Date.now() ^ seasonSeed(seasonKey())) >>> 0) ^ 0xC0FFEE);
+  },
 
+  newSection(ctx) {
+    const { mode, scale } = chooseModeAndScale();
+    this.modeName = mode;
+    this.scale = scale;
+
+    this.bpm = weatherTempoBpm();
+    // smooth-ish
+    this.beat = 60 / this.bpm;
+    this.bar = this.beat * 4;
+
+    // key changes slowly (and depends on temperature/rain)
+    const tN = tempNorm(weather.tempC);
     const rainN = clamp(weather.rainMm / 10, 0, 1);
-    const { windN } = windVec();
-    let stabProb = clamp(0.15 + rainN * 0.45 + windN * 0.20, 0.10, 0.80);
-    if (!isDayEffective()) stabProb *= 0.55;
+    const drift = Math.floor(lerp(-3, 4, rand()) + lerp(-2, 2, tN) + lerp(0, 2, rainN));
+    this.keyMidi = clampMidi(this.keyMidi + drift);
 
-    if (Math.random() < stabProb) {
-      const vel = (0.05 + 0.08 * stabProb) * (isDayEffective() ? 1 : 0.75);
-      playChordStab(rootHz, currentChord, vel, 0.9 + Math.random() * 0.7);
-    }
+    // new starting degree (avoid always 1)
+    this.degree = pick([1,1,1,4,6,2,5]);
 
-    nextChordAtMs += barMs * (0.90 + Math.random() * 0.35);
+    // reset melodic center (not too high)
+    this.melMidi = clampMidi(68 + Math.floor(randRange(-7, 6)));
+
+    // section length 2..6 minutes (night tends longer & calmer)
+    const baseMin = isDayEffective() ? 2.0 : 3.2;
+    const extra = isDayEffective() ? 4.0 : 5.0;
+    const minutes = baseMin + rand() * extra;
+    this.sectionEndsAt = ctx.currentTime + minutes * 60;
+
+    this.forceNewSection = false;
+  }
+};
+
+function degreeToMidi(keyMidi, scale, degree1to7, octave=0) {
+  const d = ((degree1to7 - 1) % 7 + 7) % 7;
+  const semi = scale[d % scale.length]; // for 5-note scales, still safe
+  return keyMidi + semi + octave*12;
+}
+
+function chooseChordQuality() {
+  const genre = (audioGenreSel.value || "jazz");
+  const rainN = clamp(weather.rainMm / 10, 0, 1);
+  const fogN = clamp(weather.fog, 0, 1);
+  const dark = clamp(fogN*0.8 + rainN*0.6 + (!isDayEffective()?0.6:0), 0, 1);
+
+  if (genre === "classical") return dark > 0.5 ? QUAL.min7 : QUAL.maj7;
+  if (genre === "blues") return QUAL.dom7;
+  if (genre === "soul") return dark > 0.5 ? QUAL.m9 : QUAL.M9;
+
+  // jazz
+  if (dark > 0.65 && chance(0.20)) return QUAL.dim7;
+  if (chance(0.30)) return QUAL.m9;
+  if (chance(0.30)) return QUAL.M9;
+  if (chance(0.25)) return QUAL.sus9;
+  return chance(0.5) ? QUAL.min7 : QUAL.maj7;
+}
+
+function nextDegreeMarkov(curDeg) {
+  const sk = seasonKey();
+  const table = MARKOV[sk] || MARKOV.spring;
+  const opts = table[curDeg] || [1,4,5,6];
+  // bias to avoid repeating same degree too much
+  let d = pick(opts);
+  if (d === curDeg && opts.length > 1) d = pick(opts);
+  return d;
+}
+
+// ---- scheduling events (pads / arp / melody / bass / perc) ----
+function scheduleBar(tBarStart) {
+  if (!audioCtx) return;
+
+  // new section if needed
+  if (musicState.forceNewSection || tBarStart >= musicState.sectionEndsAt) {
+    musicState.newSection(audioCtx);
   }
 
-  playMelody(ms, bpm, genreCfg);
-  playPerc(ms, bpm, genreCfg);
+  // update tempo continuously (but gently)
+  const targetBpm = weatherTempoBpm();
+  musicState.bpm = lerp(musicState.bpm, targetBpm, 0.06);
+  musicState.beat = 60 / musicState.bpm;
+  musicState.bar = musicState.beat * 4;
+
+  updateTimbreAndGain();
+
+  // choose next harmonic degree
+  const prevDeg = musicState.degree;
+  musicState.degree = nextDegreeMarkov(musicState.degree);
+
+  // build chord root and quality
+  const { scale } = musicState;
+  const rootMidi = degreeToMidi(musicState.keyMidi, scale, musicState.degree, 0);
+  const qual = chooseChordQuality();
+  const chordMidis = qual.map(semi => clampMidi(rootMidi + semi));
+
+  // occasional modal interchange (rare)
+  if (chance(0.08) && scale.length >= 7) {
+    chordMidis[1] = clampMidi(chordMidis[1] + (chance(0.5) ? 1 : -1));
+  }
+
+  const rainN = clamp(weather.rainMm / 10, 0, 1);
+  const windN = clamp(weather.windMs / 12, 0, 1);
+  const fogN  = clamp(weather.fog, 0, 1);
+  const cloudN = clamp(weather.cloudCover/100, 0, 1);
+
+  const energy = clamp(tempNorm(weather.tempC)*0.55 + rainN*0.55 + windN*0.20, 0, 1);
+  const calm = clamp(1 - energy, 0, 1);
+  const night = !isDayEffective();
+
+  // ---- PAD SWELLS (no drone) ----
+  // 1–3 swells per bar, long envelope; number depends on calmness
+  const swells = night ? (chance(0.65) ? 1 : 2) : (chance(0.35 + calm*0.35) ? 2 : 3);
+  for (let i = 0; i < swells; i++) {
+    const t0 = tBarStart + randRange(0.0, musicState.bar * 0.65);
+    const dur = randRange(musicState.beat*1.6, musicState.beat*3.6) * (night ? 1.25 : 1.0);
+    const vel = (0.030 + 0.040*calm) * (night ? 0.75 : 1.0);
+
+    // choose 3-5 notes from chord, spread across octaves
+    const noteCount = pick([3,4,4,5]);
+    for (let v = 0; v < noteCount; v++) {
+      const midi = chordMidis[v % chordMidis.length] + (v >= 3 ? 12 : 0) + (chance(0.25) ? 12 : 0);
+      const hz = midiToHz(clampMidi(midi));
+      const type = chance(0.5) ? "sine" : "triangle";
+
+      // slightly darker pad when fog/cloud
+      const cutoff = lerp(9000, 1800, clamp(fogN*0.8 + cloudN*0.5, 0, 1));
+      makeVoice({ type, freq: hz, when: t0, dur: dur, vel: vel / noteCount, bus: busPad, detune: randRange(-6,6), cutoff });
+    }
+  }
+
+  // ---- ARPEGGIO (non repeating, but coherent) ----
+  // patterns vary each bar
+  const arpDensity = clamp(0.18 + energy*0.75, 0.12, 0.92) * (night ? 0.55 : 1.0);
+  const steps = pick([8, 12, 16]);
+  const stepDur = musicState.bar / steps;
+
+  // choose a fresh pattern each bar
+  const pattern = [];
+  const perm = chordMidis.slice();
+  // shuffle-ish
+  for (let i = perm.length - 1; i > 0; i--) {
+    const j = Math.floor(rand() * (i+1));
+    [perm[i], perm[j]] = [perm[j], perm[i]];
+  }
+  for (let i = 0; i < steps; i++) {
+    const base = perm[i % perm.length] + (chance(0.35) ? 12 : 0) + (chance(0.12) ? 24 : 0);
+    pattern.push(clampMidi(base));
+  }
+
+  for (let i = 0; i < steps; i++) {
+    if (!chance(arpDensity)) continue;
+    const t = tBarStart + i * stepDur + (chance(0.45) ? stepDur*randRange(0.02,0.10) : 0);
+    const midi = pattern[i];
+    const hz = midiToHz(midi);
+    const dur = stepDur * randRange(0.55, 0.95);
+    const vel = (0.028 + 0.045*energy) * (night ? 0.70 : 1.0);
+
+    // more muted if fog/cloud
+    const cutoff = lerp(12000, 2400, clamp(fogN*0.9 + cloudN*0.45, 0, 1));
+    makeVoice({ type: chance(0.65) ? "triangle" : "sine", freq: hz, when: t, dur, vel, bus: busArp, detune: randRange(-4,4), cutoff });
+  }
+
+  // ---- MELODY (stepwise, long-form wandering; avoids “same note”) ----
+  // a few phrases per bar, density depends on energy, but night calmer
+  const phraseChance = clamp(0.18 + energy*0.50, 0.12, 0.62) * (night ? 0.55 : 1.0);
+  const phrases = chance(phraseChance) ? 1 : (chance(phraseChance*0.55) ? 2 : 0);
+
+  for (let p = 0; p < phrases; p++) {
+    const phraseLen = pick([3,4,5,6]);
+    let t = tBarStart + randRange(0.0, musicState.bar*0.65);
+    let cur = musicState.melMidi;
+
+    for (let n = 0; n < phraseLen; n++) {
+      // stepwise motion with occasional leap, direction memory
+      const leap = chance(0.12 + energy*0.08);
+      const step = leap ? pick([-5,-4,4,5,7,-7]) : pick([-2,-1,1,2,3,-3]);
+      const dirBias = (chance(0.60) ? musicState.melDir : -musicState.melDir);
+      cur = clampMidi(cur + step * dirBias);
+
+      // snap to scale degrees (nearest)
+      cur = snapToScale(cur, musicState.keyMidi, scale);
+
+      // avoid sitting on same pitch
+      if (n > 0 && cur === musicState.melMidi) cur = clampMidi(cur + pick([-2,2,3,-3]));
+
+      musicState.melDir = (cur >= musicState.melMidi) ? 1 : -1;
+      musicState.melMidi = cur;
+
+      const hz = midiToHz(cur);
+      const dur = randRange(musicState.beat*0.30, musicState.beat*0.85) * (night ? 1.15 : 1.0);
+      const vel = (0.030 + 0.030*calm + 0.020*energy) * (night ? 0.72 : 1.0);
+
+      const cutoff = lerp(11000, 3200, clamp(fogN*0.85 + cloudN*0.50, 0, 1));
+      const type = (audioGenreSel.value === "classical") ? "sine" : (chance(0.6) ? "triangle" : "sine");
+      makeVoice({ type, freq: hz, when: t, dur, vel, bus: busMel, detune: randRange(-3,3), cutoff });
+
+      // polyphony "echo" voice sometimes (5/6 voci overall feel)
+      if (chance(0.22 + calm*0.20) && !night) {
+        const hz2 = midiToHz(clampMidi(cur + pick([7,12,-5,5])));
+        makeVoice({ type: "sine", freq: hz2, when: t + randRange(0.03,0.08), dur: dur*0.85, vel: vel*0.55, bus: busMel, detune: randRange(-2,2), cutoff: cutoff*0.9 });
+      }
+
+      t += randRange(musicState.beat*0.25, musicState.beat*0.75);
+      if (t > tBarStart + musicState.bar*0.95) break;
+    }
+  }
+
+  // ---- BASS (soft, not constant) ----
+  const bassOn = chance(night ? 0.35 : (0.45 + energy*0.25));
+  if (bassOn) {
+    const t0 = tBarStart + (chance(0.65) ? 0 : musicState.beat * pick([1,2]));
+    const bassMidi = clampMidi(rootMidi - 12 - (chance(0.25) ? 12 : 0));
+    const hz = midiToHz(bassMidi);
+    const dur = musicState.beat * randRange(1.2, 2.3);
+    const vel = (0.030 + 0.040*energy) * (night ? 0.65 : 1.0);
+    makeVoice({ type: "sine", freq: hz, when: t0, dur, vel, bus: busBass, detune: randRange(-2,2), cutoff: 2200 });
+    if (chance(0.25 + energy*0.25) && !night) {
+      makeVoice({ type: "sine", freq: hz*2, when: t0+randRange(0.02,0.05), dur: dur*0.7, vel: vel*0.25, bus: busBass, detune: 0, cutoff: 2800 });
+    }
+  }
+
+  // ---- PERC (brushy, varies, rain adds motion) ----
+  const percDensity = clamp(0.08 + energy*0.55 + rainN*0.25, 0.06, 0.90) * (night ? 0.55 : 1.0);
+  const subSteps = 16;
+  const subDur = musicState.bar / subSteps;
+
+  for (let i = 0; i < subSteps; i++) {
+    const t = tBarStart + i * subDur;
+
+    // hats/brush
+    if (chance(percDensity * 0.55)) {
+      const vel = (0.010 + 0.030*percDensity) * (1 - fogN*0.35);
+      noiseHit(t, subDur*0.55, vel, lerp(2400, 1600, fogN));
+    }
+
+    // light kick (very sparse at night)
+    if (chance(percDensity * (night ? 0.10 : 0.18)) && (i === 0 || i === 8 || chance(0.12))) {
+      kick(t, (night ? 0.05 : 0.08) + 0.05*energy);
+    }
+  }
+
+  // subtle harmonic cadence occasionally (avoids looping feel)
+  if (chance(0.10) && prevDeg !== musicState.degree) {
+    const tCad = tBarStart + musicState.bar * randRange(0.60, 0.92);
+    const cadMidi = clampMidi(rootMidi + pick([7, 12, -5]));
+    makeVoice({ type:"sine", freq:midiToHz(cadMidi), when:tCad, dur:musicState.beat*0.45, vel:0.018*(night?0.7:1.0), bus: busArp, detune: 0, cutoff: 5200 });
+  }
+}
+
+function snapToScale(midi, keyMidi, scale) {
+  // find closest pitch class in scale
+  const pc = ((midi - keyMidi) % 12 + 12) % 12;
+  let best = 0;
+  let bestDist = 999;
+  for (const s of scale) {
+    const d = Math.abs(((pc - s + 12) % 12));
+    const dist = Math.min(d, 12 - d);
+    if (dist < bestDist) { bestDist = dist; best = s; }
+  }
+  // adjust midi to nearest scale pc
+  const targetPc = best;
+  let out = midi;
+  // move within +/- 6 semis
+  let delta = ((targetPc - pc + 12) % 12);
+  if (delta > 6) delta -= 12;
+  out = midi + delta;
+  return clampMidi(out);
+}
+
+function audioScheduler() {
+  if (!audioOn || !audioCtx || alarmRinging || !musicState.ready) return;
+
+  const now = audioCtx.currentTime;
+
+  // schedule bars ahead
+  while (musicState.nextTime < now + musicState.lookAhead) {
+    // align to bar grid in its own timeline
+    scheduleBar(musicState.nextTime);
+    musicState.nextTime += musicState.bar;
+  }
 }
 
 // ===================== ALARM =====================
@@ -1215,9 +1454,7 @@ function stopAlarm() {
   alarmRinging = false;
   alarmEndsAt = 0;
   if (alarmNode) { try { alarmNode.stop(); } catch {} alarmNode = null; }
-  nextChordAtMs = 0;
-  nextMelodyAtMs = 0;
-  nextPercAtMs = 0;
+  if (musicState.ready && audioCtx) musicState.reset(audioCtx);
 }
 alarmTest.onclick = () => startAlarm(8000);
 alarmStop.onclick = () => stopAlarm();
@@ -1310,11 +1547,14 @@ function loop(ms) {
   draw(ms);
   updateConsoleValues();
 
-  if (audioOn) updateMusic(ms);
+  // audio scheduler (runs continuously, endless)
+  if (audioOn) audioScheduler();
 
   requestAnimationFrame(loop);
 }
 requestAnimationFrame(loop);
 
-toggleNight.onchange = () => updateConsoleValues();
+toggleNight.onchange = () => { updateConsoleValues(); musicState.forceNewSection = true; };
+
+// start picker shown by default
 updateConsoleValues();
