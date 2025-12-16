@@ -4,27 +4,29 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
   <title>π Weather Art</title>
-
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&family=Playfair+Display:ital,wght@0,600;1,600&display=swap" rel="stylesheet">
-
-  <link rel="stylesheet" href="style.css" />
+  <link rel="stylesheet" href="./style.css" />
 </head>
 <body>
 
   <canvas id="c"></canvas>
 
+  <!-- DEBUG badge: if you don't see this, JS is NOT the file you're editing -->
+  <div id="debugBadge" class="debug-badge">JS loading…</div>
+
   <!-- PICKER -->
   <div id="modePicker" class="picker">
     <div class="picker-card">
       <div class="picker-title">Scegli il motivo</div>
+
       <div class="picker-grid">
-        <button class="picker-btn" data-mode="circles">◯ Cerchi</button>
-        <button class="picker-btn" data-mode="splash">✦ Splash</button>
-        <button class="picker-btn" data-mode="diamonds">◇ Diamanti</button>
+        <button id="btnCircles" class="picker-btn" type="button">◯ Cerchi</button>
+        <button id="btnSplash" class="picker-btn" type="button">✦ Splash</button>
+        <button id="btnDiamonds" class="picker-btn" type="button">◇ Diamanti</button>
       </div>
-      <div class="picker-note">Tocca in basso a destra nel quadro per tornare qui</div>
+
+      <div class="picker-note">
+        Nel quadro: tocca in basso a destra per tornare qui.
+      </div>
     </div>
   </div>
 
@@ -33,7 +35,7 @@
     <div class="menu">
       <div class="menu-head">
         <div class="menu-title">π Weather Art</div>
-        <button id="btn-exit" class="menu-exit">EXIT</button>
+        <button id="btn-exit" class="menu-exit" type="button">EXIT</button>
       </div>
 
       <div class="menu-grid">
@@ -46,7 +48,7 @@
       </div>
 
       <div class="menu-section">
-        <button id="btn-audio" class="btn wide">🎶 Audio OFF</button>
+        <button id="btn-audio" class="btn wide" type="button">🎶 Audio OFF</button>
 
         <div class="row">
           <span class="icon">🎷</span>
@@ -60,7 +62,7 @@
 
         <div class="row">
           <span class="icon">🔊</span>
-          <input id="audio-volume" type="range" min="0" max="100" value="78" />
+          <input id="audio-volume" type="range" min="0" max="100" value="80" />
         </div>
 
         <label class="toggle">
@@ -71,6 +73,6 @@
     </div>
   </div>
 
-  <script src="app.js"></script>
+  <script src="./app.js"></script>
 </body>
 </html>
