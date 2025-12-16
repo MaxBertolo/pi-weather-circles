@@ -2,37 +2,33 @@
   /* =========================
      π Weather Art — app.js (FULL)
      - Modes: circles / splash / diamonds
-     - Robust picker (pointerdown + click)
+     - Picker robust
      - Pink dot opens menu overlay
      - Bottom-right tap -> back to picker
      - Weather: Open-Meteo + geolocation
+     - City name: OpenStreetMap Nominatim reverse geocoding
      - Splash: day bg white + splashes black; night inverse
-     - Signature: MB bottom-right
+     - Signature: MB bottom-right (RED)
      - MIC: ON => Audio OFF, voice-band filtered. Shapes scale 1x..10x (volume+pitch)
-     - AUDIO: louder (~10x perceived) + soft compressor + rich arpeggiated multi-voice music
+     - AUDIO: MUCH louder + compressor + makeup gain + rich arpeggiated multi-voice music
   ========================= */
-
-  const VERSION = "JS OK + MIC + MUSIC v2";
 
   const PI = Math.PI, TAU = Math.PI * 2;
   const clamp = (x, a, b) => Math.max(a, Math.min(b, x));
   const lerp = (a, b, t) => a + (b - a) * t;
   const pad2 = (n) => String(n).padStart(2, "0");
   const mmToPx = (mm) => mm * (96 / 25.4);
-
-  function tempNorm(tC) { return clamp((tC - (-15)) / (50 - (-15)), 0, 1); }
+  const tempNorm = (tC) => clamp((tC - (-15)) / (50 - (-15)), 0, 1);
 
   // ===== DOM =====
   const canvas = document.getElementById("c");
   const ctx = canvas.getContext("2d", { alpha: false });
 
-  const debug = document.getElementById("debugBadge");
-  if (debug) debug.textContent = VERSION;
-
   const modePicker = document.getElementById("modePicker");
   const overlay = document.getElementById("overlay");
   const btnExit = document.getElementById("btn-exit");
 
+  const ovCity  = document.getElementById("ov-city");
   const ovTime  = document.getElementById("ov-time");
   const ovTemp  = document.getElementById("ov-temp");
   const ovCloud = document.getElementById("ov-cloud");
@@ -62,8 +58,8 @@
   resize();
 
   // ===== UI show/hide =====
-  function isPickerOpen() { return modePicker && !modePicker.classList.contains("hidden"); }
-  function isMenuOpen() { return overlay && !overlay.classList.contains("hidden"); }
+  const isPickerOpen = () => modePicker && !modePicker.classList.contains("hidden");
+  const isMenuOpen = () => overlay && !overlay.classList.contains("hidden");
 
   function showPicker() {
     if (!modePicker) return;
@@ -105,58 +101,36 @@
     try { localStorage.setItem("pi_mode", m); } catch {}
   }
 
-  // Robust picker binding
   function bindPicker() {
     if (!modePicker) return;
-
     const btns = modePicker.querySelectorAll("[data-mode]");
-    if (btns && btns.length) {
-      btns.forEach((btn) => {
-        const go = (e) => {
-          e?.preventDefault?.();
-          const m = btn.getAttribute("data-mode");
-          if (!MODES.includes(m)) return;
-          saveMode(m);
-          initArt(currentMode);
-          hidePicker();
-        };
-        btn.addEventListener("pointerdown", go, { passive: false });
-        btn.addEventListener("click", go, { passive: true });
-      });
-      return;
-    }
-
-    // fallback IDs
-    const bC = document.getElementById("btnCircles");
-    const bS = document.getElementById("btnSplash");
-    const bD = document.getElementById("btnDiamonds");
-    const bind = (btn, m) => {
-      if (!btn) return;
+    btns.forEach((btn) => {
       const go = (e) => {
         e?.preventDefault?.();
+        const m = btn.getAttribute("data-mode");
+        if (!MODES.includes(m)) return;
         saveMode(m);
         initArt(currentMode);
         hidePicker();
       };
       btn.addEventListener("pointerdown", go, { passive: false });
       btn.addEventListener("click", go, { passive: true });
-    };
-    bind(bC, "circles");
-    bind(bS, "splash");
-    bind(bD, "diamonds");
+    });
   }
   bindPicker();
 
-  // ===== Weather (Open-Meteo) =====
+  // ===== Weather =====
   const weather = {
     tempC: 18,
-    cloud: 40,
-    rain: 0.2,
-    wind: 2.0,
-    windDir: 0,
-    fog: 0.2,
+    cloud: 40,     // %
+    rain: 0.2,     // mm/h
+    wind: 2.0,     // m/s
+    windDir: 0,    // deg
+    fog: 0.2,      // 0..1
     isDay: true
   };
+
+  let cityName = "—";
 
   function isDayEffective() {
     return (toggleNight && toggleNight.checked) ? false : !!weather.isDay;
@@ -186,12 +160,39 @@
     updateConsoleValues();
   }
 
+  async function fetchCityName(lat, lon) {
+    try {
+      const url = `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lon}`;
+      const r = await fetch(url, { headers: { "Accept-Language": "it" } });
+      const d = await r.json();
+      cityName =
+        d?.address?.city ||
+        d?.address?.town ||
+        d?.address?.village ||
+        d?.address?.municipality ||
+        d?.address?.county ||
+        "—";
+
+      if (ovCity) ovCity.textContent = cityName;
+    } catch {
+      cityName = "—";
+      if (ovCity) ovCity.textContent = cityName;
+    }
+  }
+
   function requestGeoAndWeather() {
     const geo = navigator.geolocation;
-    if (!geo) { fetchWeather().catch(()=>{}); return; }
+    if (!geo) {
+      fetchWeather().catch(()=>{});
+      return;
+    }
     geo.getCurrentPosition(
-      (p) => fetchWeather(p.coords.latitude, p.coords.longitude).catch(()=>{}),
-      ()  => fetchWeather().catch(()=>{})
+      (p) => {
+        const { latitude, longitude } = p.coords;
+        fetchWeather(latitude, longitude).catch(()=>{});
+        fetchCityName(latitude, longitude);
+      },
+      () => fetchWeather().catch(()=>{})
     );
   }
 
@@ -200,6 +201,7 @@
 
   function updateConsoleValues() {
     const now = new Date();
+    if (ovCity)  ovCity.textContent  = cityName;
     if (ovTime)  ovTime.textContent  = `${pad2(now.getHours())}:${pad2(now.getMinutes())}`;
     if (ovTemp)  ovTemp.textContent  = `${Math.round(weather.tempC)}°C`;
     if (ovCloud) ovCloud.textContent = `${Math.round(weather.cloud)}%`;
@@ -217,6 +219,7 @@
     const rainN = clamp(weather.rain / 10, 0, 1);
     const windN = clamp(weather.wind / 14, 0, 1);
 
+    // Splash strict rule:
     if (mode === "splash") return day ? "#fff" : "#000";
 
     if (!day) {
@@ -322,7 +325,7 @@
 
   initArt(currentMode);
 
-  // ===== Interaction on canvas =====
+  // ===== Canvas interaction =====
   function hitBottomRight(x, y) {
     const zone = Math.max(72, Math.min(120, Math.min(W, H) * 0.12));
     return (x >= W - zone && y >= H - zone);
@@ -330,7 +333,6 @@
 
   canvas.addEventListener("pointerdown", (e) => {
     if (isMenuOpen() || isPickerOpen()) return;
-
     const r = canvas.getBoundingClientRect();
     const x = e.clientX - r.left;
     const y = e.clientY - r.top;
@@ -349,7 +351,7 @@
   }
 
   // =========================
-  // MICROPHONE: ON => AUDIO OFF
+  // MICROPHONE
   // =========================
   let micOn = false;
   let micStream = null;
@@ -404,7 +406,6 @@
   function disableMic() {
     micOn = false;
     micGain = micPitch = micSmooth = 0;
-
     if (micStream) micStream.getTracks().forEach((t) => t.stop());
     micStream = null;
     micSource = null;
@@ -416,7 +417,7 @@
   function updateMic() {
     if (!micOn || !micAnalyser || !micFreq || !micTime) return;
 
-    // Time-domain RMS -> volume
+    // RMS -> volume
     micAnalyser.getByteTimeDomainData(micTime);
     let sumSq = 0;
     for (let i = 0; i < micTime.length; i++) {
@@ -426,7 +427,7 @@
     const rms = Math.sqrt(sumSq / micTime.length);
     micGain = clamp(rms * 3.2, 0, 1);
 
-    // Freq centroid -> pitch-ish
+    // centroid -> pitch-ish
     micAnalyser.getByteFrequencyData(micFreq);
     let magSum = 0;
     let weighted = 0;
@@ -438,7 +439,6 @@
     const centroid = weighted / (magSum + 1e-6);
     micPitch = clamp(centroid / micFreq.length, 0, 1);
 
-    // smoothing: instant but stable
     micSmooth = micSmooth * 0.65 + micGain * 0.35;
   }
 
@@ -454,24 +454,26 @@
   }
 
   // =========================
-  // AUDIO: Loud + Soft + Rich
+  // AUDIO (LOUD + SOFT + RICH)
   // =========================
   let audioOn = false;
   let audioCtx = null;
 
   let master = null;
   let comp = null;
+  let makeup = null;
   let lp = null;
-  let chordTimer = null;
 
+  let chordTimer = null;
   let userVol = 0.8;
+
   if (volSlider) {
     userVol = clamp(Number(volSlider.value) / 100, 0, 1);
     volSlider.addEventListener("input", () => {
       userVol = clamp(Number(volSlider.value) / 100, 0, 1);
       if (master && audioCtx) {
         const volCurve = Math.pow(userVol, 0.6);
-        master.gain.setTargetAtTime(1.8 * volCurve, audioCtx.currentTime, 0.06);
+        master.gain.setTargetAtTime(3.2 * volCurve, audioCtx.currentTime, 0.06);
       }
     });
   }
@@ -486,7 +488,7 @@
 
   function timbreCutoff() {
     const muffle = clamp(weather.fog * 0.85 + (weather.cloud / 100) * 0.55, 0, 1);
-    let c = lerp(15000, 1800, muffle);
+    let c = lerp(16000, 1600, muffle);
     if (!isDayEffective()) c *= 0.75;
     return c;
   }
@@ -495,12 +497,11 @@
     const g = (genreSel && genreSel.value) ? genreSel.value : "jazz";
     if (g === "blues") return [0,3,5,6,7,10];
     if (g === "classical") return [0,2,4,5,7,9,11];
-    if (g === "soul") return [0,2,3,5,7,9,10];   // dorian
-    return [0,2,3,5,7,9,10];                      // jazz ambient dorian
+    if (g === "soul") return [0,2,3,5,7,9,10];
+    return [0,2,3,5,7,9,10];
   }
 
   function chooseRootStep() {
-    // gentle Markov-ish flow (keeps moving without loops)
     const opts = [0, 2, 4, 5, 7, 9, 10];
     const bias = Math.random() < 0.55 ? 0 : (Math.random() < 0.5 ? 2 : -2);
     const idx = (Math.floor(Math.random() * opts.length) + bias + opts.length) % opts.length;
@@ -510,30 +511,29 @@
   function scheduleChord() {
     if (!audioCtx) return;
 
-    // weather tempo
     const tN = tempNorm(weather.tempC);
     const rainN = clamp(weather.rain / 10, 0, 1);
     const windN = clamp(weather.wind / 12, 0, 1);
     const cloudN = clamp(weather.cloud / 100, 0, 1);
     const energy = clamp(tN * 0.55 + rainN * 0.55 + windN * 0.20 + cloudN * 0.10, 0, 1);
 
-    let bpm = lerp(45, 95, clamp(energy, 0, 1));
+    let bpm = lerp(42, 98, energy);
     if (!isDayEffective()) bpm *= 0.80;
 
     const beat = 60 / bpm;
-    const dur = beat * lerp(3.5, 7.0, Math.random());
+    const dur = beat * lerp(3.8, 7.5, Math.random());
 
     const g = (genreSel && genreSel.value) ? genreSel.value : "jazz";
     const scale = currentScale();
 
-    // slowly drifting key center
-    const baseKey = 48; // C2-ish base
+    const baseKey = 48;
     const root = baseKey + chooseRootStep() + (Math.random() < 0.30 ? 12 : 0);
 
-    // chord color: soft, many notes (6–8)
     const chordTones = (g === "blues")
-      ? [0, 4, 7, 10, 14, 17]      // dom-ish extended
-      : (Math.random() < 0.5 ? [0, 3, 7, 10, 14, 17, 21] : [0, 4, 7, 11, 14, 16, 21]);
+      ? [0, 4, 7, 10, 14, 17]
+      : (Math.random() < 0.5
+          ? [0, 3, 7, 10, 14, 17, 21]
+          : [0, 4, 7, 11, 14, 16, 21]);
 
     const now = audioCtx.currentTime;
 
@@ -541,10 +541,9 @@
     lp.frequency.setTargetAtTime(timbreCutoff(), now, 0.25);
 
     const voices = Math.floor(lerp(6, 8, Math.random()));
-    const baseVel = lerp(0.020, 0.040, 1 - energy) * (isDayEffective() ? 1.0 : 0.75);
+    const baseVel = lerp(0.020, 0.045, 1 - energy) * (isDayEffective() ? 1.0 : 0.75);
 
     for (let i = 0; i < voices; i++) {
-      // build arpeggio notes: chord + scale passing
       const useChord = Math.random() < 0.72;
       const semi = useChord
         ? chordTones[i % chordTones.length]
@@ -584,7 +583,7 @@
   }
 
   async function audioEnable() {
-    // mic has priority
+    // mic priority
     if (micOn) {
       disableMic();
       if (toggleMic) toggleMic.checked = false;
@@ -594,26 +593,30 @@
     await audioCtx.resume();
 
     master = audioCtx.createGain();
-
-    // 10x perceived volume with curve + headroom + compressor
     const volCurve = Math.pow(userVol, 0.6);
-    master.gain.value = 1.8 * volCurve;
+    master.gain.value = 3.2 * volCurve; // << molto più alto
 
+    // compressor stronger
     comp = audioCtx.createDynamicsCompressor();
-    comp.threshold.value = -22;
-    comp.knee.value = 24;
-    comp.ratio.value = 3.2;
+    comp.threshold.value = -28;
+    comp.knee.value = 30;
+    comp.ratio.value = 4.2;
     comp.attack.value = 0.02;
     comp.release.value = 0.25;
+
+    // makeup gain (clean boost)
+    makeup = audioCtx.createGain();
+    makeup.gain.value = 1.4;
 
     lp = audioCtx.createBiquadFilter();
     lp.type = "lowpass";
     lp.frequency.value = timbreCutoff();
     lp.Q.value = 0.8;
 
-    // routing: voices -> lp -> comp -> master -> destination
+    // routing: voices -> lp -> comp -> makeup -> master -> destination
     lp.connect(comp);
-    comp.connect(master);
+    comp.connect(makeup);
+    makeup.connect(master);
     master.connect(audioCtx.destination);
 
     audioOn = true;
@@ -635,6 +638,7 @@
     audioCtx = null;
     master = null;
     comp = null;
+    makeup = null;
     lp = null;
   }
 
@@ -656,12 +660,11 @@
     });
   }
 
-  // ===== Night toggle affects timbre =====
-  if (toggleNight) {
-    toggleNight.addEventListener("change", () => {
-      // no restart necessary; cutoff follows weather
-    });
-  }
+  // Ensure contexts resume on user gesture (iOS/Chrome)
+  document.addEventListener("pointerdown", async () => {
+    try { if (audioCtx && audioCtx.state !== "running") await audioCtx.resume(); } catch {}
+    try { if (micCtx && micCtx.state !== "running") await micCtx.resume(); } catch {}
+  }, { passive: true });
 
   // ===== Motion =====
   function step(dt, ms) {
@@ -672,7 +675,7 @@
     const { wx, wy, windN } = windVec();
     const energy = clamp(tN * 0.55 + rainN * 0.55 + windN * 0.20, 0, 1);
 
-    // Pink motion
+    // pink
     pink.sp += dt * (0.8 + 1.2 * rainN);
     pink.rp += dt * (0.20 + 0.30 * windN);
     pink.squash = Math.sin(pink.sp) * (0.03 + 0.14 * (rainN + windN * 0.4));
@@ -756,7 +759,7 @@
   }
 
   function draw(ms) {
-    // mic-driven scale: volume dominates, pitch adds extra
+    // mic-driven scale 1..10
     const micMix = clamp((micSmooth * 0.75) + (micPitch * 0.25), 0, 1);
     const micScale = micOn ? lerp(1, 10, micMix) : 1;
 
@@ -782,7 +785,6 @@
       const day = isDayEffective();
       ctx.fillStyle = day ? "rgba(0,0,0,0.92)" : "rgba(255,255,255,0.88)";
       const rainN = clamp(weather.rain / 10, 0, 1);
-
       const micExpand = 1 + (micScale - 1) * 0.75;
 
       for (const s of splashes) {
@@ -808,7 +810,6 @@
       const rainN = clamp(weather.rain / 10, 0, 1);
       const windN = clamp(weather.wind / 12, 0, 1);
       const storm = clamp(rainN * 0.7 + windN * 0.4, 0, 1);
-
       const micMul = 1 + (micScale - 1) * 0.85;
 
       for (const d of diamonds) {
@@ -836,7 +837,7 @@
       }
     }
 
-    // Pink dot (solid)
+    // Pink dot
     const pulse = 0.10 + 0.08 * Math.sin(ms / 850);
     ctx.fillStyle = `rgba(255,70,170,${0.92 + pulse})`;
     const prx = pink.r * (1 + pink.squash);
@@ -845,18 +846,17 @@
     ctx.ellipse(pink.x, pink.y, Math.max(1, prx), Math.max(1, pry), pink.rot, 0, TAU);
     ctx.fill();
 
-    // Signature MB only
+    // Signature MB (RED) — fixed bottom-right
     ctx.save();
-    ctx.fillStyle = isDayEffective() ? "rgba(0,0,0,0.55)" : "rgba(255,255,255,0.65)";
+    ctx.fillStyle = "rgba(200,0,0,0.95)";
     ctx.textAlign = "right";
     ctx.textBaseline = "alphabetic";
-    ctx.font = "italic 700 18px Arial";
+    ctx.font = "italic 700 24px 'Playfair Display', serif";
     ctx.fillText("MB", W - 18, H - 18);
     ctx.restore();
   }
 
   // ===== Boot =====
-  // Start with picker visible
   showPicker();
 
   // ===== Main loop =====
@@ -869,16 +869,4 @@
     requestAnimationFrame(loop);
   }
   requestAnimationFrame(loop);
-
-  // ===== Audio / Mic interaction buttons =====
-  // Keep audio unlocked on user gesture
-  document.addEventListener("pointerdown", async () => {
-    try { if (audioCtx && audioCtx.state !== "running") await audioCtx.resume(); } catch {}
-    try { if (micCtx && micCtx.state !== "running") await micCtx.resume(); } catch {}
-  }, { passive: true });
-
-  if (btnAudio) {
-    // already bound inside audio section
-  }
-
 })();
