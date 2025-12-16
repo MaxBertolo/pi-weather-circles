@@ -1,19 +1,20 @@
 (() => {
   /* =========================
-     π Weather Art — app.js
+     π Weather Art — app.js (FULL)
      - Modes: circles / splash / diamonds
-     - Picker robust (pointerdown + click)
-     - Pink dot opens menu
-     - Bottom-right tap -> picker
+     - Robust picker (pointerdown + click)
+     - Pink dot opens menu overlay
+     - Bottom-right tap -> back to picker
      - Weather: Open-Meteo + geolocation
-     - Audio: simple evolving pad (non-monotone)
-     - Microphone: when ON => Audio OFF, voice-band filtered,
-       scale 1x..10x based on volume + pitch (instant + stable)
+     - Splash: day bg white + splashes black; night inverse
+     - Signature: MB bottom-right
+     - MIC: ON => Audio OFF, voice-band filtered. Shapes scale 1x..10x (volume+pitch)
+     - AUDIO: louder (~10x perceived) + soft compressor + rich arpeggiated multi-voice music
   ========================= */
 
-  const VERSION = "JS OK + MIC v1";
-  const PI = Math.PI, TAU = Math.PI * 2;
+  const VERSION = "JS OK + MIC + MUSIC v2";
 
+  const PI = Math.PI, TAU = Math.PI * 2;
   const clamp = (x, a, b) => Math.max(a, Math.min(b, x));
   const lerp = (a, b, t) => a + (b - a) * t;
   const pad2 = (n) => String(n).padStart(2, "0");
@@ -32,18 +33,18 @@
   const overlay = document.getElementById("overlay");
   const btnExit = document.getElementById("btn-exit");
 
-  const btnAudio = document.getElementById("btn-audio");
-  const genreSel = document.getElementById("audio-genre");
-  const volSlider = document.getElementById("audio-volume");
-  const toggleNight = document.getElementById("toggle-night");
-  const toggleMic = document.getElementById("toggle-mic");
-
   const ovTime  = document.getElementById("ov-time");
   const ovTemp  = document.getElementById("ov-temp");
   const ovCloud = document.getElementById("ov-cloud");
   const ovRain  = document.getElementById("ov-rain");
   const ovWind  = document.getElementById("ov-wind");
   const ovFog   = document.getElementById("ov-fog");
+
+  const btnAudio = document.getElementById("btn-audio");
+  const genreSel = document.getElementById("audio-genre");
+  const volSlider = document.getElementById("audio-volume");
+  const toggleNight = document.getElementById("toggle-night");
+  const toggleMic = document.getElementById("toggle-mic");
 
   // ===== Resize =====
   let W = 0, H = 0, DPR = 1;
@@ -104,11 +105,10 @@
     try { localStorage.setItem("pi_mode", m); } catch {}
   }
 
-  // Robust picker binding (supports data-mode OR specific IDs)
+  // Robust picker binding
   function bindPicker() {
     if (!modePicker) return;
 
-    // preferred: [data-mode]
     const btns = modePicker.querySelectorAll("[data-mode]");
     if (btns && btns.length) {
       btns.forEach((btn) => {
@@ -126,7 +126,7 @@
       return;
     }
 
-    // fallback: IDs
+    // fallback IDs
     const bC = document.getElementById("btnCircles");
     const bS = document.getElementById("btnSplash");
     const bD = document.getElementById("btnDiamonds");
@@ -150,11 +150,11 @@
   // ===== Weather (Open-Meteo) =====
   const weather = {
     tempC: 18,
-    cloud: 40,      // %
-    rain: 0.2,      // mm/h
-    wind: 2.0,      // m/s
-    windDir: 0,     // deg
-    fog: 0.2,       // 0..1
+    cloud: 40,
+    rain: 0.2,
+    wind: 2.0,
+    windDir: 0,
+    fog: 0.2,
     isDay: true
   };
 
@@ -173,7 +173,6 @@
 
     weather.tempC = d.current.temperature_2m;
     weather.isDay = !!d.current.is_day;
-
     weather.wind = (d.current.wind_speed_10m ?? 5) / 3.6;
     weather.windDir = d.current.wind_direction_10m ?? 0;
 
@@ -218,7 +217,6 @@
     const rainN = clamp(weather.rain / 10, 0, 1);
     const windN = clamp(weather.wind / 14, 0, 1);
 
-    // Splash strict rule:
     if (mode === "splash") return day ? "#fff" : "#000";
 
     if (!day) {
@@ -227,7 +225,6 @@
       return `rgb(${v},${v},${v})`;
     }
 
-    // Day base: white, then very light grey for cloud/fog, darker for strong storm
     const sunny = (clouds < 0.22 && fog < 0.20 && rainN < 0.03);
     if (sunny) return "#fff";
 
@@ -340,31 +337,31 @@
 
     if (hitBottomRight(x, y)) { showPicker(); return; }
 
-    if (!pink) return;
     const dx = x - pink.x;
     const dy = y - pink.y;
     if (Math.hypot(dx, dy) <= pink.r + 30) openMenu();
   }, { passive: true });
 
-  // ===== Motion =====
   function windVec() {
     const windN = clamp(weather.wind / 12, 0, 1);
     const dir = (weather.windDir || 0) * PI / 180;
     return { wx: Math.cos(dir) * windN, wy: Math.sin(dir) * windN, windN };
   }
 
-  // ===== Microphone =====
+  // =========================
+  // MICROPHONE: ON => AUDIO OFF
+  // =========================
   let micOn = false;
   let micStream = null;
-  let micCtx = null;        // dedicated context (so mic can work even if audio off)
+  let micCtx = null;
   let micSource = null;
   let micAnalyser = null;
   let micFreq = null;
   let micTime = null;
 
-  let micGain = 0;          // 0..1
-  let micPitch = 0;         // 0..1
-  let micSmooth = 0;        // smoothed energy
+  let micGain = 0;     // 0..1
+  let micPitch = 0;    // 0..1
+  let micSmooth = 0;   // smoothed energy
 
   async function enableMic() {
     try {
@@ -381,7 +378,6 @@
 
       micSource = micCtx.createMediaStreamSource(micStream);
 
-      // Voice band emphasis: 120–3000 Hz
       const bandpass = micCtx.createBiquadFilter();
       bandpass.type = "bandpass";
       bandpass.frequency.value = 1200;
@@ -409,9 +405,7 @@
     micOn = false;
     micGain = micPitch = micSmooth = 0;
 
-    if (micStream) {
-      micStream.getTracks().forEach((t) => t.stop());
-    }
+    if (micStream) micStream.getTracks().forEach((t) => t.stop());
     micStream = null;
     micSource = null;
     micAnalyser = null;
@@ -422,17 +416,17 @@
   function updateMic() {
     if (!micOn || !micAnalyser || !micFreq || !micTime) return;
 
-    // TIME DOMAIN RMS (volume)
+    // Time-domain RMS -> volume
     micAnalyser.getByteTimeDomainData(micTime);
     let sumSq = 0;
     for (let i = 0; i < micTime.length; i++) {
       const v = (micTime[i] - 128) / 128;
       sumSq += v * v;
     }
-    const rms = Math.sqrt(sumSq / micTime.length);     // 0..~1
-    micGain = clamp(rms * 3.2, 0, 1);                  // boost
+    const rms = Math.sqrt(sumSq / micTime.length);
+    micGain = clamp(rms * 3.2, 0, 1);
 
-    // FREQ DOMAIN centroid (pitch-ish)
+    // Freq centroid -> pitch-ish
     micAnalyser.getByteFrequencyData(micFreq);
     let magSum = 0;
     let weighted = 0;
@@ -444,11 +438,10 @@
     const centroid = weighted / (magSum + 1e-6);
     micPitch = clamp(centroid / micFreq.length, 0, 1);
 
-    // smoothing: fast enough to feel instant, but avoids jitter
+    // smoothing: instant but stable
     micSmooth = micSmooth * 0.65 + micGain * 0.35;
   }
 
-  // mic toggle behavior: mic ON -> audio OFF
   if (toggleMic) {
     toggleMic.addEventListener("change", async () => {
       if (toggleMic.checked) {
@@ -460,20 +453,26 @@
     });
   }
 
-  // ===== Audio (simple musical, non-monotone) =====
+  // =========================
+  // AUDIO: Loud + Soft + Rich
+  // =========================
   let audioOn = false;
   let audioCtx = null;
+
   let master = null;
+  let comp = null;
   let lp = null;
   let chordTimer = null;
-  let chordState = { t: 0, step: 0, base: 220 };
 
   let userVol = 0.8;
   if (volSlider) {
     userVol = clamp(Number(volSlider.value) / 100, 0, 1);
     volSlider.addEventListener("input", () => {
       userVol = clamp(Number(volSlider.value) / 100, 0, 1);
-      if (master && audioCtx) master.gain.setTargetAtTime(0.18 * userVol, audioCtx.currentTime, 0.06);
+      if (master && audioCtx) {
+        const volCurve = Math.pow(userVol, 0.6);
+        master.gain.setTargetAtTime(1.8 * volCurve, audioCtx.currentTime, 0.06);
+      }
     });
   }
 
@@ -485,87 +484,108 @@
 
   function midiToHz(m) { return 440 * Math.pow(2, (m - 69) / 12); }
 
-  function currentScale() {
-    const g = (genreSel && genreSel.value) ? genreSel.value : "jazz";
-    if (g === "blues") return [0,3,5,6,7,10];      // blues-ish
-    if (g === "classical") return [0,2,4,5,7,9,11]; // major
-    if (g === "soul") return [0,2,3,5,7,9,10];     // dorian
-    return [0,2,3,5,7,9,10];                       // jazz ambient dorian
-  }
-
-  function chordQual(g) {
-    if (g === "blues") return [0,4,7,10,14];       // dom9
-    if (g === "classical") return [0,4,7,11,14];   // maj9
-    if (g === "soul") return [0,3,7,10,14];        // m9
-    return Math.random() < 0.5 ? [0,3,7,10,14] : [0,4,7,11,14]; // m9 or M9
-  }
-
   function timbreCutoff() {
     const muffle = clamp(weather.fog * 0.85 + (weather.cloud / 100) * 0.55, 0, 1);
-    let c = lerp(12000, 1400, muffle);
+    let c = lerp(15000, 1800, muffle);
     if (!isDayEffective()) c *= 0.75;
     return c;
+  }
+
+  function currentScale() {
+    const g = (genreSel && genreSel.value) ? genreSel.value : "jazz";
+    if (g === "blues") return [0,3,5,6,7,10];
+    if (g === "classical") return [0,2,4,5,7,9,11];
+    if (g === "soul") return [0,2,3,5,7,9,10];   // dorian
+    return [0,2,3,5,7,9,10];                      // jazz ambient dorian
+  }
+
+  function chooseRootStep() {
+    // gentle Markov-ish flow (keeps moving without loops)
+    const opts = [0, 2, 4, 5, 7, 9, 10];
+    const bias = Math.random() < 0.55 ? 0 : (Math.random() < 0.5 ? 2 : -2);
+    const idx = (Math.floor(Math.random() * opts.length) + bias + opts.length) % opts.length;
+    return opts[idx];
   }
 
   function scheduleChord() {
     if (!audioCtx) return;
 
-    // tempo from weather
+    // weather tempo
     const tN = tempNorm(weather.tempC);
     const rainN = clamp(weather.rain / 10, 0, 1);
     const windN = clamp(weather.wind / 12, 0, 1);
-    const energy = clamp(tN * 0.6 + rainN * 0.55 + windN * 0.2, 0, 1);
-    let bpm = lerp(52, 105, energy);
-    if (!isDayEffective()) bpm *= 0.82;
+    const cloudN = clamp(weather.cloud / 100, 0, 1);
+    const energy = clamp(tN * 0.55 + rainN * 0.55 + windN * 0.20 + cloudN * 0.10, 0, 1);
+
+    let bpm = lerp(45, 95, clamp(energy, 0, 1));
+    if (!isDayEffective()) bpm *= 0.80;
+
     const beat = 60 / bpm;
-    const chordEvery = beat * 2; // change every 2 beats
+    const dur = beat * lerp(3.5, 7.0, Math.random());
 
     const g = (genreSel && genreSel.value) ? genreSel.value : "jazz";
-    const qual = chordQual(g);
     const scale = currentScale();
 
-    // drift key slowly
-    chordState.step = (chordState.step + 1) % 8;
-    const rootMidi = 48 + (scale[chordState.step % scale.length]) + (Math.random()<0.25?12:0);
-    const notes = qual.map(semi => rootMidi + semi);
+    // slowly drifting key center
+    const baseKey = 48; // C2-ish base
+    const root = baseKey + chooseRootStep() + (Math.random() < 0.30 ? 12 : 0);
 
-    // cutoff
-    lp.frequency.setTargetAtTime(timbreCutoff(), audioCtx.currentTime, 0.18);
+    // chord color: soft, many notes (6–8)
+    const chordTones = (g === "blues")
+      ? [0, 4, 7, 10, 14, 17]      // dom-ish extended
+      : (Math.random() < 0.5 ? [0, 3, 7, 10, 14, 17, 21] : [0, 4, 7, 11, 14, 16, 21]);
 
-    // create 5 voices with soft envelopes
     const now = audioCtx.currentTime;
-    const dur = chordEvery * lerp(1.2, 1.9, Math.random());
-    const baseVel = (0.020 + 0.030 * (1 - energy)) * (isDayEffective()?1.0:0.75);
 
-    notes.forEach((m, i) => {
+    // timbre follows fog/cloud
+    lp.frequency.setTargetAtTime(timbreCutoff(), now, 0.25);
+
+    const voices = Math.floor(lerp(6, 8, Math.random()));
+    const baseVel = lerp(0.020, 0.040, 1 - energy) * (isDayEffective() ? 1.0 : 0.75);
+
+    for (let i = 0; i < voices; i++) {
+      // build arpeggio notes: chord + scale passing
+      const useChord = Math.random() < 0.72;
+      const semi = useChord
+        ? chordTones[i % chordTones.length]
+        : scale[Math.floor(Math.random() * scale.length)];
+
+      const octave = (Math.random() < 0.55) ? 12 : 24;
+      const midi = root + semi + octave + (Math.random() < 0.12 ? 12 : 0);
+
       const o = audioCtx.createOscillator();
       const gN = audioCtx.createGain();
       const p = audioCtx.createStereoPanner();
 
-      o.type = (g === "classical") ? "sine" : (Math.random()<0.5 ? "triangle" : "sine");
-      o.frequency.value = midiToHz(m);
-      o.detune.value = lerp(-7, 7, Math.random());
-      p.pan.value = lerp(-0.55, 0.55, Math.random());
+      o.type = (g === "classical")
+        ? "sine"
+        : (Math.random() < 0.55 ? "triangle" : "sine");
 
-      gN.gain.value = 0.0001;
-      gN.gain.setValueAtTime(0.0001, now);
-      gN.gain.linearRampToValueAtTime(baseVel / notes.length, now + 0.03);
-      gN.gain.setTargetAtTime(0.0001, now + dur, 0.08);
+      o.frequency.value = midiToHz(midi);
+      o.detune.value = lerp(-9, 9, Math.random());
+      p.pan.value = lerp(-0.75, 0.75, Math.random());
+
+      const t0 = now + i * beat * 0.22;
+      const vel = baseVel * lerp(0.75, 1.15, Math.random());
+
+      gN.gain.setValueAtTime(0.0001, t0);
+      gN.gain.linearRampToValueAtTime(vel / voices, t0 + 0.10);
+      gN.gain.setTargetAtTime(0.0001, t0 + dur, 0.35);
 
       o.connect(gN);
       gN.connect(p);
       p.connect(lp);
 
-      o.start(now);
-      o.stop(now + dur + 0.4);
-    });
+      o.start(t0);
+      o.stop(t0 + dur + 1.0);
+    }
 
-    // next
-    chordTimer = setTimeout(scheduleChord, chordEvery * 1000);
+    chordTimer = setTimeout(scheduleChord, dur * 1000);
   }
 
   async function audioEnable() {
-    if (micOn) { // mic has priority
+    // mic has priority
+    if (micOn) {
       disableMic();
       if (toggleMic) toggleMic.checked = false;
     }
@@ -574,14 +594,27 @@
     await audioCtx.resume();
 
     master = audioCtx.createGain();
-    master.gain.value = 0.18 * userVol;
-    master.connect(audioCtx.destination);
+
+    // 10x perceived volume with curve + headroom + compressor
+    const volCurve = Math.pow(userVol, 0.6);
+    master.gain.value = 1.8 * volCurve;
+
+    comp = audioCtx.createDynamicsCompressor();
+    comp.threshold.value = -22;
+    comp.knee.value = 24;
+    comp.ratio.value = 3.2;
+    comp.attack.value = 0.02;
+    comp.release.value = 0.25;
 
     lp = audioCtx.createBiquadFilter();
     lp.type = "lowpass";
     lp.frequency.value = timbreCutoff();
     lp.Q.value = 0.8;
-    lp.connect(master);
+
+    // routing: voices -> lp -> comp -> master -> destination
+    lp.connect(comp);
+    comp.connect(master);
+    master.connect(audioCtx.destination);
 
     audioOn = true;
     setAudioButton();
@@ -601,6 +634,7 @@
     try { if (audioCtx) await audioCtx.close(); } catch {}
     audioCtx = null;
     master = null;
+    comp = null;
     lp = null;
   }
 
@@ -614,7 +648,6 @@
 
   if (genreSel) {
     genreSel.addEventListener("change", () => {
-      // restart the chord scheduler to reflect genre
       if (audioOn) {
         try { if (chordTimer) clearTimeout(chordTimer); } catch {}
         chordTimer = null;
@@ -623,7 +656,14 @@
     });
   }
 
-  // ===== Step: motion + mic update =====
+  // ===== Night toggle affects timbre =====
+  if (toggleNight) {
+    toggleNight.addEventListener("change", () => {
+      // no restart necessary; cutoff follows weather
+    });
+  }
+
+  // ===== Motion =====
   function step(dt, ms) {
     updateMic();
 
@@ -715,7 +755,6 @@
     return { x: x * c - y * s, y: x * s + y * c };
   }
 
-  // ===== Draw =====
   function draw(ms) {
     // mic-driven scale: volume dominates, pitch adds extra
     const micMix = clamp((micSmooth * 0.75) + (micPitch * 0.25), 0, 1);
@@ -728,6 +767,7 @@
       const day = isDayEffective();
       ctx.strokeStyle = day ? "rgba(0,0,0,0.92)" : "rgba(255,255,255,0.92)";
       ctx.lineWidth = 2.6;
+
       ctx.beginPath();
       for (const c of circles) {
         const rx = c.r * micScale * (1 + c.squash);
@@ -743,7 +783,6 @@
       ctx.fillStyle = day ? "rgba(0,0,0,0.92)" : "rgba(255,255,255,0.88)";
       const rainN = clamp(weather.rain / 10, 0, 1);
 
-      // mic expands strongly, rain expands too
       const micExpand = 1 + (micScale - 1) * 0.75;
 
       for (const s of splashes) {
@@ -816,6 +855,10 @@
     ctx.restore();
   }
 
+  // ===== Boot =====
+  // Start with picker visible
+  showPicker();
+
   // ===== Main loop =====
   let last = performance.now();
   function loop(ms) {
@@ -825,8 +868,17 @@
     draw(ms);
     requestAnimationFrame(loop);
   }
-
-  // ===== Boot =====
-  showPicker();
   requestAnimationFrame(loop);
+
+  // ===== Audio / Mic interaction buttons =====
+  // Keep audio unlocked on user gesture
+  document.addEventListener("pointerdown", async () => {
+    try { if (audioCtx && audioCtx.state !== "running") await audioCtx.resume(); } catch {}
+    try { if (micCtx && micCtx.state !== "running") await micCtx.resume(); } catch {}
+  }, { passive: true });
+
+  if (btnAudio) {
+    // already bound inside audio section
+  }
+
 })();
