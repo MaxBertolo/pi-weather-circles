@@ -1,26 +1,57 @@
-html,body{margin:0;padding:0;height:100%;overflow:hidden;background:#000;font-family:Inter,Arial,sans-serif}
+html,body{margin:0;padding:0;height:100%;overflow:hidden;background:#000;font-family:Arial,sans-serif}
 canvas{position:fixed;inset:0;z-index:1;display:block}
+
+/* Debug badge */
+.debug-badge{
+  position:fixed;left:12px;top:12px;z-index:9999;
+  background:rgba(0,0,0,.72);color:#fff;padding:8px 10px;border-radius:10px;
+  font-weight:800;font-size:12px;letter-spacing:.3px
+}
+
 .hidden{display:none!important}
 
 /* Picker */
-.picker{position:fixed;inset:0;display:grid;place-items:center;background:rgba(0,0,0,.65);z-index:20}
-.picker-card{background:#f5f5f5;padding:24px;border-radius:20px;width:min(520px,90vw);text-align:center}
-.picker-title{font-size:28px;font-weight:800;margin-bottom:20px}
+.picker{
+  position:fixed;inset:0;display:grid;place-items:center;
+  background:rgba(0,0,0,.65);
+  z-index:2000;
+  pointer-events:auto;
+}
+.picker-card{
+  background:#f5f5f5;padding:24px;border-radius:20px;
+  width:min(560px,92vw);text-align:center;
+  box-shadow:0 20px 70px rgba(0,0,0,.35);
+}
+.picker-title{font-size:28px;font-weight:900;margin-bottom:18px}
 .picker-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px}
-.picker-btn{font-size:18px;padding:14px;border-radius:14px;border:none;background:#111;color:#fff;font-weight:700;cursor:pointer}
-.picker-note{margin-top:14px;font-size:12px;opacity:.6}
+.picker-btn{
+  font-size:18px;padding:14px;border-radius:14px;border:none;
+  background:#111;color:#fff;font-weight:800;cursor:pointer;
+  pointer-events:auto;
+}
+.picker-btn:active{transform:scale(.99)}
+.picker-note{margin-top:14px;font-size:12px;opacity:.65}
 
-/* Menu Overlay (quello che hai incollato) */
-.overlay{position:fixed;inset:0;background:rgba(0,0,0,.6);display:grid;place-items:center;z-index:30}
-.menu{background:#f8f8f8;border-radius:22px;padding:22px;width:min(820px,94vw);font-family:'Playfair Display',serif}
+/* Menu */
+.overlay{
+  position:fixed;inset:0;background:rgba(0,0,0,.6);
+  display:grid;place-items:center;
+  z-index:3000;
+  pointer-events:auto;
+}
+.menu{
+  background:#f8f8f8;border-radius:22px;padding:22px;
+  width:min(820px,94vw);
+  box-shadow:0 20px 90px rgba(0,0,0,.35);
+}
 .menu-head{display:flex;justify-content:space-between;align-items:center}
-.menu-title{font-size:28px;font-weight:600}
-.menu-exit{background:#111;color:#fff;border:none;border-radius:12px;padding:10px 14px}
+.menu-title{font-size:28px;font-weight:900}
+.menu-exit{background:#111;color:#fff;border:none;border-radius:12px;padding:10px 14px;font-weight:900;cursor:pointer}
 .menu-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin:20px 0}
 .card{background:#eaeaea;border-radius:16px;padding:14px;text-align:center}
 .icon{font-size:22px}
-.big{font-size:22px;font-weight:700}
+.big{font-size:22px;font-weight:900}
 .menu-section{margin-top:12px}
-.btn.wide{width:100%;padding:14px;font-size:18px;margin-bottom:12px}
+.btn.wide{width:100%;padding:14px;font-size:18px;margin-bottom:12px;font-weight:900;border:none;border-radius:14px;background:#111;color:#fff;cursor:pointer}
 .row{display:flex;align-items:center;gap:10px;margin-bottom:10px}
-.toggle{font-size:16px;display:flex;align-items:center;gap:8px}
+.toggle{font-size:16px;display:flex;align-items:center;gap:8px;font-weight:800}
