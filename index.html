@@ -2,146 +2,101 @@
 <html lang="it">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
   <title>π Weather Art</title>
+
+  <!-- Font artistico -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&family=Playfair+Display:ital,wght@0,600;1,600&display=swap" rel="stylesheet">
+
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
-  <canvas id="c"></canvas>
 
-  <!-- MODE PICKER -->
-  <div id="modePicker" class="sheet hidden" aria-hidden="true">
-    <div class="sheet-card">
-      <h1>Scegli il motivo</h1>
-      <div class="picker-grid">
-        <button class="pick" data-mode="circles">Cerchi</button>
-        <button class="pick" data-mode="splash">Splash</button>
-        <button class="pick" data-mode="diamonds">Diamanti</button>
-      </div>
-      <button id="btn-skip" class="secondary">Continua</button>
-      <p class="hint">Tocca in basso a destra in qualunque quadro per tornare qui.</p>
+<canvas id="c"></canvas>
+
+<!-- PICKER -->
+<div id="modePicker" class="picker">
+  <div class="picker-card">
+    <div class="picker-title">Scegli il motivo</div>
+    <div class="picker-grid">
+      <button class="picker-btn" data-mode="circles">◯ Cerchi</button>
+      <button class="picker-btn" data-mode="splash">✦ Splash</button>
+      <button class="picker-btn" data-mode="diamonds">◇ Diamanti</button>
+    </div>
+    <div class="picker-note">
+      Tocca in basso a destra nel quadro per tornare qui
     </div>
   </div>
+</div>
 
-  <!-- MENU OVERLAY -->
-  <div id="overlay" class="overlay hidden" aria-hidden="true">
-    <div class="menu">
-      <div class="menu-head">
-        <div class="menu-title">Console</div>
-        <button id="btn-exit" class="exit">EXIT</button>
+<!-- MENU -->
+<div id="overlay" class="overlay hidden">
+  <div class="menu">
+    <div class="menu-head">
+      <div class="menu-title">π Weather Art</div>
+      <button id="btn-exit" class="menu-exit">EXIT</button>
+    </div>
+
+    <div class="menu-grid">
+      <div class="card">
+        <div class="icon">🕒</div>
+        <div id="ov-time" class="big">--:--</div>
       </div>
 
-      <div class="info">
-        <div class="row">
-          <div class="label">Ora</div><div id="ov-time" class="val">--:--</div>
-        </div>
-        <div class="row">
-          <div class="label">🌡️ Temp</div><div id="ov-temp" class="val">--</div>
-        </div>
-        <div class="row">
-          <div class="label">☁️ Nuvole</div><div id="ov-cloud" class="val">--</div>
-        </div>
-        <div class="row">
-          <div class="label">🌧️ Pioggia</div><div id="ov-rain" class="val">--</div>
-        </div>
-        <div class="row">
-          <div class="label">💨 Vento</div><div id="ov-wind" class="val">--</div>
-        </div>
-        <div class="row">
-          <div class="label">🌫️ Nebbia</div><div id="ov-fog" class="val">--</div>
-        </div>
+      <div class="card">
+        <div class="icon">🌡️</div>
+        <div id="ov-temp" class="big">--°C</div>
       </div>
 
-      <div class="controls">
-        <button id="btn-geo" class="primary">Geolocalizzazione</button>
+      <div class="card">
+        <div class="icon">☁️</div>
+        <div id="ov-cloud" class="big">--%</div>
+      </div>
 
-        <div class="ctrl-row">
-          <button id="btn-audio" class="primary">Audio: OFF</button>
+      <div class="card">
+        <div class="icon">🌧️</div>
+        <div id="ov-rain" class="big">--</div>
+      </div>
 
-          <label class="switch">
-            <input id="toggle-mic" type="checkbox">
-            <span>Microfono</span>
-          </label>
-        </div>
+      <div class="card">
+        <div class="icon">💨</div>
+        <div id="ov-wind" class="big">--</div>
+      </div>
 
-        <div class="ctrl-row">
-          <label class="switch">
-            <input id="toggle-meditation" type="checkbox">
-            <span>Meditazione (solo respiro)</span>
-          </label>
-        </div>
-
-        <div class="ctrl-row">
-          <label class="small">Genere</label>
-          <select id="audio-genre">
-            <option value="jazz">Jazz Ambient</option>
-            <option value="soul">Soul</option>
-            <option value="blues">Blues</option>
-            <option value="classical">Classical</option>
-          </select>
-        </div>
-
-        <div class="ctrl-row">
-          <label class="small">Motivo</label>
-          <select id="art-mode">
-            <option value="circles">Cerchi</option>
-            <option value="splash">Splash</option>
-            <option value="diamonds">Diamanti</option>
-          </select>
-        </div>
-
-        <div class="ctrl-row">
-          <label class="small">Volume</label>
-          <input id="audio-volume" type="range" min="0" max="100" value="65" />
-          <span id="audio-volume-val" class="small">65%</span>
-        </div>
-
-        <div class="ctrl-row">
-          <label class="switch">
-            <input id="toggle-night" type="checkbox">
-            <span>Notte permanente</span>
-          </label>
-        </div>
-
-        <div class="divider"></div>
-
-        <div class="alarm">
-          <div class="alarm-title">Sveglia</div>
-          <div class="ctrl-row">
-            <label class="switch">
-              <input id="alarm-enabled" type="checkbox">
-              <span>Abilitata</span>
-            </label>
-            <input id="alarm-time" type="time" />
-          </div>
-
-          <div class="ctrl-row">
-            <label class="small">Suono</label>
-            <select id="alarm-sound">
-              <option value="siren">Sirena</option>
-              <option value="trumpet">Tromba</option>
-            </select>
-          </div>
-
-          <div class="ctrl-row">
-            <button id="alarm-test" class="secondary">Test</button>
-            <button id="alarm-stop" class="secondary">Stop</button>
-          </div>
-        </div>
-
-        <div class="mic-status">
-          <div class="small">
-            Mic: <span id="mic-state">OFF</span> —
-            Voice: <span id="mic-voice">0%</span> —
-            Noise: <span id="mic-noise">0%</span> —
-            Pitch: <span id="mic-pitch">--</span>
-          </div>
-        </div>
-
+      <div class="card">
+        <div class="icon">🌫️</div>
+        <div id="ov-fog" class="big">--</div>
       </div>
     </div>
-  </div>
 
-  <script src="app.js"></script>
+    <div class="menu-section">
+      <button id="btn-audio" class="btn wide">🎶 Audio OFF</button>
+
+      <div class="row">
+        <label>🎷</label>
+        <select id="audio-genre">
+          <option value="jazz">Jazz Ambient</option>
+          <option value="soul">Soul</option>
+          <option value="blues">Blues</option>
+          <option value="classical">Classica soft</option>
+        </select>
+      </div>
+
+      <div class="row">
+        <label>🔊</label>
+        <input id="audio-volume" type="range" min="0" max="100" value="75" />
+      </div>
+
+      <label class="toggle">
+        <input id="toggle-night" type="checkbox">
+        🌙 Notte forzata
+      </label>
+    </div>
+  </div>
+</div>
+
+<script src="app.js"></script>
 </body>
 </html>
