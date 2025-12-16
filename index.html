@@ -5,21 +5,22 @@
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
   <title>π Weather Art</title>
 
+  <!-- Font più “artistico” (usato anche per la firma MB) -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,500;0,700;1,700&display=swap" rel="stylesheet">
+
   <link rel="stylesheet" href="./style.css" />
 </head>
 <body>
 
   <canvas id="c"></canvas>
 
-  <!-- (opzionale) debug badge se lo usi -->
-  <div id="debugBadge" class="debug-badge">JS loading…</div>
-
   <!-- PICKER -->
   <div id="modePicker" class="picker">
     <div class="picker-card">
       <div class="picker-title">Scegli il motivo</div>
 
-      <!-- Se preferisci usare data-mode (consigliato) -->
       <div class="picker-grid">
         <button class="picker-btn" type="button" data-mode="circles">◯ Cerchi</button>
         <button class="picker-btn" type="button" data-mode="splash">✦ Splash</button>
@@ -41,16 +42,18 @@
       </div>
 
       <div class="menu-grid">
+        <div class="card"><div class="icon">📍</div><div id="ov-city" class="big">—</div></div>
         <div class="card"><div class="icon">🕒</div><div id="ov-time" class="big">--:--</div></div>
         <div class="card"><div class="icon">🌡️</div><div id="ov-temp" class="big">--°C</div></div>
+
         <div class="card"><div class="icon">☁️</div><div id="ov-cloud" class="big">--%</div></div>
         <div class="card"><div class="icon">🌧️</div><div id="ov-rain" class="big">--</div></div>
         <div class="card"><div class="icon">💨</div><div id="ov-wind" class="big">--</div></div>
-        <div class="card"><div class="icon">🌫️</div><div id="ov-fog" class="big">--</div></div>
+
+        <div class="card"><div class="icon">🌫️</div><div id="ov-fog" class="big">--%</div></div>
       </div>
 
       <div class="menu-section">
-        <!-- AUDIO -->
         <button id="btn-audio" class="btn wide" type="button">🎶 Audio OFF</button>
 
         <div class="row">
@@ -68,13 +71,11 @@
           <input id="audio-volume" type="range" min="0" max="100" value="80" />
         </div>
 
-        <!-- MICROFONO (NUOVO) -->
         <label class="toggle">
           <input id="toggle-mic" type="checkbox" />
-          🎤 Microfono
+          🎤 Microfono (spegne l’audio)
         </label>
 
-        <!-- NOTTE FORZATA -->
         <label class="toggle" style="margin-top:10px;">
           <input id="toggle-night" type="checkbox" />
           🌙 Notte forzata
