@@ -1,11 +1,12 @@
 // π Weather Art — Cerchi / Splash / Diamanti
+// + Picker iniziale (Cerchi/Splash/Diamanti) - FIX click (canvas disabilitato quando picker/menu aperti)
 // + Menu via pallino rosa
-// + Tap bottom-right => picker
-// + Audio endless generativo (meteo)
+// + Tap bottom-right => torna al picker
+// + Meteo: Open-Meteo (geoloc + refresh)
+// + Audio generativo endless (genre + volume + meteo + stagioni + giorno/notte)
 // + Microfono (solo se audio OFF): loudness => vibrazione/scale
-// + Pitch detection (voce -> colore)
-// + Voice vs noise gating
-// + Meditation (solo respiro): envelope lenta, no pitch
+// + Pitch detection (voce -> colore), voice vs noise
+// + Meditation (solo respiro): envelope lenta, no pitch priority
 // + Splash night: white on dark background
 
 const canvas = document.getElementById("c");
@@ -88,31 +89,36 @@ function rainAngleForDraw() {
   return Math.atan2(dy, dx);
 }
 
-// ---------- Overlays ----------
+// ---------- Click/Touch routing FIX ----------
 function openConsole() {
   overlay.classList.remove("hidden");
   overlay.setAttribute("aria-hidden", "false");
+  canvas.style.pointerEvents = "none";
 }
 function closeConsole() {
   overlay.classList.add("hidden");
   overlay.setAttribute("aria-hidden", "true");
+  canvas.style.pointerEvents = isModePickerOpen() ? "none" : "auto";
 }
-btnExit.addEventListener("click", closeConsole);
-overlay.addEventListener("pointerdown", (e) => {
-  if (e.target === overlay) closeConsole();
-}, { passive: true });
-
 function showModePicker() {
   modePicker.classList.remove("hidden");
   modePicker.setAttribute("aria-hidden", "false");
+  canvas.style.pointerEvents = "none";
 }
 function hideModePicker() {
   modePicker.classList.add("hidden");
   modePicker.setAttribute("aria-hidden", "true");
+  canvas.style.pointerEvents = overlay.classList.contains("hidden") ? "auto" : "none";
 }
 function isModePickerOpen() {
   return !modePicker.classList.contains("hidden");
 }
+
+// Exit menu click
+btnExit.addEventListener("click", closeConsole);
+overlay.addEventListener("pointerdown", (e) => {
+  if (e.target === overlay) closeConsole();
+}, { passive: true });
 
 // ---------- Resize ----------
 let W = 0, H = 0, DPR = 1;
@@ -202,18 +208,20 @@ function bg() {
   }
   if (sunny) return `rgb(255,255,255)`;
 
+  // temporale forte => grigio più scuro, ma non “nero”
   if (stormN > 0.65) {
     const t = clamp((stormN - 0.65) / 0.35, 0, 1);
-    const v = Math.floor(lerp(230, 155, t));
+    const v = Math.floor(lerp(235, 155, t));
     return `rgb(${v},${v},${v})`;
   }
 
+  // nuvolo/nebbia => grigi CHIARI
   const lightGreyMix = clamp(clouds * 0.65 + fog * 0.85, 0, 1);
   const v = Math.floor(lerp(255, 240, lightGreyMix));
   return `rgb(${v},${v},${v})`;
 }
 
-// ===================== ART MODES =====================
+// ===================== MODES =====================
 const MODES = ["circles", "splash", "diamonds"];
 let currentMode = "circles";
 
@@ -235,7 +243,7 @@ function modeLabel(mode) {
   return "DIAMANTI";
 }
 
-// picker click handlers
+// Picker button click
 modePicker.addEventListener("click", (e) => {
   const btn = e.target.closest("[data-mode]");
   if (!btn) return;
@@ -245,33 +253,38 @@ modePicker.addEventListener("click", (e) => {
   initArt(currentMode);
   hideModePicker();
 });
+
 btnSkip.addEventListener("click", () => {
   loadMode();
   initArt(currentMode);
   hideModePicker();
 });
+
 artModeSel.addEventListener("change", () => {
   const m = artModeSel.value;
   saveMode(m);
   initArt(currentMode);
 });
 
-// ---------- Shared “pink dot” ----------
-let infoDot = null;
+// ---------- Tap bottom-right to reopen picker ----------
+function hitBottomRight(x, y) {
+  const zone = Math.max(72, Math.min(120, Math.min(W, H) * 0.12));
+  return (x >= W - zone && y >= H - zone);
+}
 
-// ---------- Shapes per mode ----------
+// ---------- Shapes ----------
+let infoDot = null;
 let circles = [];
 let splashes = [];
 let diamonds = [];
 
-// Diamonds palette (background polygons)
 const DIAMOND_PALETTE = [
   "#BA5900", "#FF8100", "#088DEF", "#0B24C5", "#7B1DEF", "#62027D",
   "#D245D3", "#AE048F", "#FA01A9", "#E40674", "#CC021C", "#F17677"
 ];
 
 function initArt(mode) {
-  const rng = mulberry32(seasonSeed(seasonKey()));
+  const rng = mulberry32(seasonSeed(seasonKey()) ^ 0x9E3779B9);
   circles = [];
   splashes = [];
   diamonds = [];
@@ -279,18 +292,18 @@ function initArt(mode) {
   infoDot = {
     x: rng() * W,
     y: rng() * H,
-    r: mmToPx(3),
+    r: mmToPx(3),          // raggio ~3mm
     p: rng() * TAU,
     s: 1.0,
-    speedMul: 1.55,
-    vx: (rng() < 0.5 ? -1 : 1) * lerp(80, 150, rng()),
-    vy: (rng() < 0.5 ? -1 : 1) * lerp(80, 150, rng()),
+    speedMul: 1.25,        // più lento di prima
+    vx: (rng() < 0.5 ? -1 : 1) * lerp(70, 120, rng()),
+    vy: (rng() < 0.5 ? -1 : 1) * lerp(70, 120, rng()),
     squashPhase: rng() * TAU,
     squashSpeed: 0.85,
     squashBase: 0.02,
     squashMax: 0.18,
     rotPhase: rng() * TAU,
-    rotSpeed: 0.28,
+    rotSpeed: 0.22,
     squash: 0,
     rot: 0
   };
@@ -298,8 +311,8 @@ function initArt(mode) {
   if (mode === "circles") {
     const N = 199;
     for (let i = 0; i < N; i++) {
-      const baseR = 8 + rng() * 16;
-      const r = baseR * 4.0;
+      const baseR = 10 + rng() * 20;
+      const r = baseR * 3.2; // grandi
       circles.push({
         x: rng() * W,
         y: rng() * H,
@@ -313,7 +326,9 @@ function initArt(mode) {
         rotPhase: rng() * TAU,
         rotSpeed: 0.2 + rng() * 0.7,
         squash: 0,
-        rot: 0
+        rot: 0,
+        _micScale: 1,
+        _micVib: 0
       });
     }
   }
@@ -339,7 +354,10 @@ function initArt(mode) {
         rot: rng() * TAU,
         rotSpeed: lerp(-0.10, 0.10, rng()),
         p: rng() * TAU,
-        dropSeeds
+        dropSeeds,
+        _expand: 0.2,
+        _storm: 0,
+        _micVib: 0
       });
     }
   }
@@ -360,7 +378,9 @@ function initArt(mode) {
         vx: lerp(-18, 18, rng()),
         vy: lerp(-18, 18, rng()),
         color: DIAMOND_PALETTE[i % DIAMOND_PALETTE.length],
-        alpha: lerp(0.65, 0.95, rng())
+        alpha: lerp(0.65, 0.95, rng()),
+        _micScale: 1,
+        _micVib: 0
       });
     }
   }
@@ -368,18 +388,7 @@ function initArt(mode) {
   musicState.forceNewSection = true;
 }
 
-// initial
-loadMode();
-showModePicker();
-initArt(currentMode);
-
-// ---------- Tap bottom-right to reopen picker ----------
-function hitBottomRight(x, y) {
-  const zone = Math.max(72, Math.min(120, Math.min(W, H) * 0.12));
-  return (x >= W - zone && y >= H - zone);
-}
-
-// pointer handler: bottom-right => picker; pink dot => menu
+// ---------- Global touch handler (canvas) ----------
 canvas.addEventListener("pointerdown", (e) => {
   if (!overlay.classList.contains("hidden")) return;
   if (isModePickerOpen()) return;
@@ -388,11 +397,13 @@ canvas.addEventListener("pointerdown", (e) => {
   const x = e.clientX - rect.left;
   const y = e.clientY - rect.top;
 
+  // bottom-right => picker
   if (hitBottomRight(x, y)) {
     showModePicker();
     return;
   }
 
+  // pink dot => menu
   if (!infoDot) return;
   const dx = x - infoDot.x;
   const dy = y - infoDot.y;
@@ -434,8 +445,7 @@ toggleMeditation.addEventListener("change", () => {
 
 toggleMic.addEventListener("change", async () => {
   if (toggleMic.checked) {
-    // if audio ON => turn it OFF (required)
-    if (audioOn) await disableAudio();
+    if (audioOn) await disableAudio(); // esclusione
     await enableMic();
   } else {
     disableMic();
@@ -457,12 +467,10 @@ async function enableMic() {
 
   micSource = micCtx.createMediaStreamSource(micStream);
 
-  // time domain for RMS + pitch
   micAnalyserTD = micCtx.createAnalyser();
   micAnalyserTD.fftSize = 2048;
   micAnalyserTD.smoothingTimeConstant = 0.25;
 
-  // freq domain for “voice vs noise” hints
   micAnalyserFD = micCtx.createAnalyser();
   micAnalyserFD.fftSize = 2048;
   micAnalyserFD.smoothingTimeConstant = 0.35;
@@ -512,7 +520,6 @@ function disableMic() {
 function updateMicAnalysis() {
   if (!micEnabled || !micAnalyserTD || !micAnalyserFD) return;
 
-  // RMS loudness
   micAnalyserTD.getFloatTimeDomainData(micTimeData);
   let sum = 0;
   for (let i = 0; i < micTimeData.length; i++) {
@@ -520,49 +527,36 @@ function updateMicAnalysis() {
     sum += v * v;
   }
   const rms = Math.sqrt(sum / micTimeData.length);
-  const loud = clamp(rms * 3.4, 0, 1); // scale
-  // smooth fast level
+  const loud = clamp(rms * 3.4, 0, 1);
   micLevel = lerp(micLevel, loud, 0.35);
-
-  // “breath” envelope: much slower low-pass
   micBreath = lerp(micBreath, micLevel, 0.06);
 
-  // Voice vs Noise + Pitch detection:
-  // We run pitch autocorrelation; if confidence is high => voiceLikely
   const { hz, conf } = detectPitchAC(micTimeData, micCtx.sampleRate);
   pitchHz = hz;
   pitchConf = conf;
 
-  // Simple noise/voice decision:
-  // - voice if pitchConf good AND energy not too extreme high-frequency
   micAnalyserFD.getFloatFrequencyData(micFreqData);
   const flat = spectralFlatness(micFreqData);
   const centroid = spectralCentroid(micFreqData, micCtx.sampleRate);
 
-  // voice heuristic:
-  // pitchConf high, centroid moderate, flatness low-ish
   voiceLikely = (pitchConf > 0.45 && centroid > 250 && centroid < 2600 && flat < 0.55);
 
-  // Hue from pitch: map 80..700 Hz to 210..20 (blue -> warm)
   if (voiceLikely && pitchHz > 60 && pitchHz < 900) {
     const pn = clamp((pitchHz - 80) / (700 - 80), 0, 1);
     pitchHue = lerp(210, 20, pn);
   } else {
-    // fallback hue (gentle pink-ish)
     pitchHue = lerp(pitchHue, 320, 0.02);
   }
 
   setMicStatus();
 }
 
-// Autocorrelation pitch (robust enough for voice)
+// Autocorrelation pitch
 function detectPitchAC(buf, sampleRate) {
-  // remove DC
   let mean = 0;
   for (let i = 0; i < buf.length; i++) mean += buf[i];
   mean /= buf.length;
 
-  // energy gate
   let energy = 0;
   for (let i = 0; i < buf.length; i++) {
     const v = buf[i] - mean;
@@ -571,7 +565,6 @@ function detectPitchAC(buf, sampleRate) {
   energy /= buf.length;
   if (energy < 0.00002) return { hz: 0, conf: 0 };
 
-  // search lag range for voice
   const minHz = 80, maxHz = 700;
   const minLag = Math.floor(sampleRate / maxHz);
   const maxLag = Math.floor(sampleRate / minHz);
@@ -589,20 +582,16 @@ function detectPitchAC(buf, sampleRate) {
       bestLag = lag;
     }
   }
-
   if (bestLag < 0) return { hz: 0, conf: 0 };
 
-  // normalize correlation into [0..1]
   const conf = clamp(bestCorr / (buf.length * energy), 0, 1);
   const hz = sampleRate / bestLag;
 
-  // reject unstable
   if (hz < minHz || hz > maxHz) return { hz: 0, conf: 0 };
   return { hz, conf };
 }
 
 function spectralCentroid(dbArray, sampleRate) {
-  // dbArray: negative dB values, convert to linear magnitude
   let num = 0, den = 0;
   const nyq = sampleRate / 2;
   const n = dbArray.length;
@@ -614,9 +603,7 @@ function spectralCentroid(dbArray, sampleRate) {
   }
   return den > 1e-9 ? num / den : 0;
 }
-
 function spectralFlatness(dbArray) {
-  // geometric mean / arithmetic mean
   let geo = 0, ari = 0;
   const n = dbArray.length;
   for (let i = 0; i < n; i++) {
@@ -630,7 +617,6 @@ function spectralFlatness(dbArray) {
 }
 
 // ===================== AUDIO (ENDLESS GENERATIVE) =====================
-// (same as earlier endless engine, but with: if mic ON => audio disabled)
 let audioCtx = null;
 let master = null;
 let timbreLP = null;
@@ -712,7 +698,7 @@ function makeImpulse(ctx, seconds = 2.2, decay = 2.6) {
 async function enableAudio() {
   if (audioOn) return;
 
-  // If mic is ON, turn it OFF (exclusive)
+  // esclusione mic
   if (micEnabled) {
     toggleMic.checked = false;
     disableMic();
@@ -771,7 +757,7 @@ async function enableAudio() {
     try { await audioCtx.resume(); } catch {}
   }
 
-  // small test beep
+  // tiny test beep (helps iOS/Chrome)
   try {
     const o = audioCtx.createOscillator();
     const g = audioCtx.createGain();
@@ -855,7 +841,6 @@ const QUAL = {
   m9:    [0, 3, 7, 10, 14],
   M9:    [0, 4, 7, 11, 14],
   sus9:  [0, 5, 7, 10, 14],
-  add9:  [0, 4, 7, 14],
   dim7:  [0, 3, 6, 9],
 };
 const MARKOV = {
@@ -864,6 +849,7 @@ const MARKOV = {
   summer: { 1:[4,5,6], 2:[5], 3:[6,4], 4:[1,2,5], 5:[1,6], 6:[2,4,5], 7:[1,3] },
   autumn: { 1:[4,6], 2:[5,7], 3:[6], 4:[1,2,5], 5:[1,6], 6:[2,4], 7:[1] }
 };
+
 function chooseModeAndScale() {
   const sk = seasonKey();
   const genre = (audioGenreSel.value || "jazz");
@@ -1096,7 +1082,7 @@ function scheduleBar(tBarStart) {
   const calm = clamp(1 - energy, 0, 1);
   const night = !isDayEffective();
 
-  // PAD swells (no drone)
+  // PAD swells
   const swells = night ? (chance(0.65) ? 1 : 2) : (chance(0.35 + calm*0.35) ? 2 : 3);
   for (let i = 0; i < swells; i++) {
     const t0 = tBarStart + randRange(0.0, musicState.bar * 0.65);
@@ -1176,7 +1162,7 @@ function scheduleBar(tBarStart) {
     }
   }
 
-  // BASS
+  // BASS (soft)
   const bassOn = chance(night ? 0.35 : (0.45 + energy*0.25));
   if (bassOn) {
     const t0 = tBarStart + (chance(0.65) ? 0 : musicState.beat * pick([1,2]));
@@ -1187,7 +1173,7 @@ function scheduleBar(tBarStart) {
     makeVoice({ type: "sine", freq: hz, when: t0, dur, vel, bus: busBass, detune: randRange(-2,2), cutoff: 2200 });
   }
 
-  // PERC
+  // PERC (very light)
   const percDensity = clamp(0.08 + energy*0.55 + rainN*0.25, 0.06, 0.90) * (night ? 0.55 : 1.0);
   const subSteps = 16;
   const subDur = musicState.bar / subSteps;
@@ -1341,23 +1327,18 @@ function playTrumpet(durationMs) {
   alarmNode = o1;
 }
 
-// ===================== MOTION (meteo + mic) =====================
+// ===================== MOTION =====================
 function step(dt, ms) {
   const tN = tempNorm(weather.tempC);
   const rainN = clamp(weather.rainMm / 10, 0, 1);
   const { wx, wy, windN } = windVec();
 
-  // mic influence
-  // - meditation: use slow envelope "breath"
-  // - normal: use micLevel; voice adds extra
   const micBase = micEnabled ? (meditationEnabled ? micBreath : micLevel) : 0;
   const micVibe = micEnabled ? (meditationEnabled ? micBreath : (micLevel * (voiceLikely ? 1.25 : 0.85))) : 0;
 
   const base = lerp(14, 60, tN);
   const vibr = alarmRinging ? (3.5 + 6.0 * rainN) : 0;
   const squashWeather = clamp(0.15 + windN * 0.75 + rainN * 0.55, 0, 1);
-
-  // if meditation, calm down weather motion a bit
   const calmFactor = meditationEnabled ? 0.55 : 1.0;
 
   if (currentMode === "circles") {
@@ -1370,7 +1351,6 @@ function step(dt, ms) {
       c.squash = (c.squashBase + c.squashMax * squashWeather) * osc;
       c.rot = (Math.sin(c.rotPhase) * 0.35) * (0.15 + 0.85 * windN);
 
-      // mic expansion + vibration
       c._micScale = 1 + micBase * (voiceLikely ? 0.55 : 0.38);
       c._micVib = micVibe;
 
@@ -1396,7 +1376,6 @@ function step(dt, ms) {
         c.x += Math.sin(ms / 35 + c.p) * amp * dt * 9;
         c.y += Math.cos(ms / 41 + c.p) * amp * dt * 9;
       }
-
       if (vibr > 0) {
         c.x += Math.sin(ms / 35 + c.p) * vibr * dt * 60;
         c.y += Math.cos(ms / 41 + c.p) * vibr * dt * 60;
@@ -1421,7 +1400,6 @@ function step(dt, ms) {
       s.y += wy * base * s.drift * dt * 1.35 * calmFactor;
       s.y += base * (0.12 + 0.55 * rainN) * dt * 0.35 * calmFactor;
 
-      // mic influences splash expansion + wobble
       s._expand = expand + micBase * (voiceLikely ? 0.95 : 0.70);
       s._storm = storm;
       s._micVib = micVibe;
@@ -1432,7 +1410,6 @@ function step(dt, ms) {
         s.y += Math.cos(ms / 33 + s.p) * amp * dt * 6;
         s.rot += (s._micVib * 0.30) * dt * 3.0;
       }
-
       if (vibr > 0) {
         s.x += Math.sin(ms / 28 + s.p) * vibr * dt * 55;
         s.y += Math.cos(ms / 33 + s.p) * vibr * dt * 55;
@@ -1466,7 +1443,6 @@ function step(dt, ms) {
         d.y += Math.cos(ms / 37 + d.a) * amp * dt * 7;
         d.skewPhase += d._micVib * dt * 3.0;
       }
-
       if (vibr > 0) {
         d.x += Math.sin(ms / 31 + d.a) * vibr * dt * 60;
         d.y += Math.cos(ms / 37 + d.a) * vibr * dt * 60;
@@ -1480,11 +1456,11 @@ function step(dt, ms) {
     }
   }
 
-  // Pink dot
+  // Pink dot motion
   if (infoDot) {
     const speedWeather = lerp(0.85, 1.25, clamp(tN * 0.7 + rainN * 0.5 + windN * 0.2, 0, 1));
     const micBoost = micEnabled ? (meditationEnabled ? micBreath : micLevel) : 0;
-    const speed = infoDot.speedMul * speedWeather * (1 + micBoost * 0.15);
+    const speed = infoDot.speedMul * speedWeather * (1 + micBoost * 0.10);
 
     infoDot.squashPhase += dt * infoDot.squashSpeed * (1.0 + 1.6 * rainN);
     infoDot.rotPhase    += dt * infoDot.rotSpeed * (0.8 + 1.6 * windN);
@@ -1495,10 +1471,10 @@ function step(dt, ms) {
     infoDot.vx += wx * 12 * dt;
     infoDot.vy += wy * 12 * dt;
 
-    infoDot.p += dt * (PI * 0.14 + infoDot.s * 0.06) * speed;
+    infoDot.p += dt * (PI * 0.12 + infoDot.s * 0.06) * speed;
 
-    const wobX = Math.sin(infoDot.p) * (14 + 10 * (1 - rainN));
-    const wobY = Math.cos(infoDot.p / PI) * (10 + 8 * (1 - rainN));
+    const wobX = Math.sin(infoDot.p) * (12 + 8 * (1 - rainN));
+    const wobY = Math.cos(infoDot.p / PI) * (9 + 7 * (1 - rainN));
 
     infoDot.x += (infoDot.vx * dt) * speed + wobX * dt;
     infoDot.y += (infoDot.vy * dt) * speed + wobY * dt;
@@ -1514,6 +1490,12 @@ function step(dt, ms) {
 }
 
 // ===================== DRAW =====================
+function hslStroke(alpha=0.9) {
+  const sat = voiceLikely ? 78 : 10;
+  const lig = voiceLikely ? 42 : 50;
+  return `hsla(${pitchHue},${sat}%,${lig}%,${alpha})`;
+}
+
 function draw(ms) {
   ctx.fillStyle = bg();
   ctx.fillRect(0, 0, W, H);
@@ -1526,17 +1508,8 @@ function draw(ms) {
   drawFooter();
 }
 
-function hslStroke(alpha=0.9) {
-  // pitchHue is meaningful only when voiceLikely, otherwise subtle
-  const sat = voiceLikely ? 78 : 10;
-  const lig = voiceLikely ? 42 : 50;
-  return `hsla(${pitchHue},${sat}%,${lig}%,${alpha})`;
-}
-
 function drawCircles(ms) {
   const day = isDayEffective();
-
-  // base black/white, but if voice: tint with pitch color
   const base = day ? "rgba(0,0,0,0.90)" : "rgba(255,255,255,0.95)";
   ctx.strokeStyle = (micEnabled && voiceLikely) ? hslStroke(day ? 0.70 : 0.78) : base;
   ctx.lineWidth = 2.6;
@@ -1555,10 +1528,12 @@ function drawCircles(ms) {
 function drawSplashes(ms) {
   const alpha = isDayEffective() ? 0.92 : 0.80;
 
-  // IMPORTANT: night => splash WHITE, day => BLACK
+  // night => WHITE splashes
   const v = isDayEffective() ? 0 : 255;
   const isVoiceTint = micEnabled && voiceLikely;
-  ctx.fillStyle = isVoiceTint ? `hsla(${pitchHue},78%,${isDayEffective()?30:70}%,${alpha})` : `rgba(${v},${v},${v},${alpha})`;
+  ctx.fillStyle = isVoiceTint
+    ? `hsla(${pitchHue},78%,${isDayEffective()?30:70}%,${alpha})`
+    : `rgba(${v},${v},${v},${alpha})`;
 
   const rainN = clamp(weather.rainMm / 10, 0, 1);
   const { windN } = windVec();
@@ -1638,12 +1613,9 @@ function drawDiamonds(ms) {
 
     const a = isDayEffective() ? d.alpha : d.alpha * 0.78;
 
-    // if voice => tint diamonds slightly with pitch color
-    if (micEnabled && voiceLikely) {
-      ctx.fillStyle = `hsla(${pitchHue},78%,52%,${Math.min(0.95, a)})`;
-    } else {
-      ctx.fillStyle = hexToRgba(d.color, a);
-    }
+    ctx.fillStyle = (micEnabled && voiceLikely)
+      ? `hsla(${pitchHue},78%,52%,${Math.min(0.95, a)})`
+      : hexToRgba(d.color, a);
 
     const size = d.size * lerp(0.95, 1.15, tN) * micScale;
     const w = size * sx;
@@ -1689,22 +1661,21 @@ function drawPink(ms) {
   ctx.fill();
 }
 
-// Footer: left mode label, right signature MB
 function drawFooter() {
   const pad = 18;
   const y = H - pad;
   const day = isDayEffective();
-  const col = day ? "rgba(0,0,0,0.55)" : "rgba(255,255,255,0.65)";
+  const col = day ? "rgba(0,0,0,0.55)" : "rgba(255,255,255,0.65) &";
 
   ctx.save();
-  ctx.fillStyle = col;
+  ctx.fillStyle = day ? "rgba(0,0,0,0.55)" : "rgba(255,255,255,0.65)";
   ctx.textBaseline = "alphabetic";
   ctx.font = "700 14px Arial";
   ctx.fillText(modeLabel(currentMode), pad, y);
   ctx.restore();
 
   ctx.save();
-  ctx.fillStyle = col;
+  ctx.fillStyle = day ? "rgba(0,0,0,0.55)" : "rgba(255,255,255,0.65)";
   ctx.textAlign = "right";
   ctx.textBaseline = "alphabetic";
   ctx.font = "italic 700 18px Arial";
@@ -1712,17 +1683,11 @@ function drawFooter() {
   ctx.restore();
 }
 
-// ===================== Mode picker default =====================
-loadMode();
-showModePicker();
-
-// ===================== Tap bottom-right => picker (any mode) =====================
-function hitBottomRight(x, y) {
-  const zone = Math.max(72, Math.min(120, Math.min(W, H) * 0.12));
-  return (x >= W - zone && y >= H - zone);
-}
-
-// Already handled in pointerdown above (canvas handler)
+// ===================== Menu + day/night hook =====================
+toggleNight.onchange = () => {
+  updateConsoleValues();
+  musicState.forceNewSection = true;
+};
 
 // ===================== MAIN LOOP =====================
 let last = performance.now();
@@ -1730,38 +1695,23 @@ function loop(ms) {
   const dt = clamp((ms - last) / 1000, 0, 0.05);
   last = ms;
 
-  // mic analysis
   updateMicAnalysis();
-
   step(dt, ms);
   draw(ms);
   updateConsoleValues();
-
   if (audioOn) audioScheduler();
 
   requestAnimationFrame(loop);
 }
-requestAnimationFrame(loop);
 
-toggleNight.onchange = () => { updateConsoleValues(); musicState.forceNewSection = true; };
-
-// ===================== Menu + click rules =====================
-function isModePickerOpenNow() { return isModePickerOpen(); }
-
-// tap bottom-right handled already, but we keep it consistent:
-canvas.addEventListener("pointerdown", (e) => {
-  if (!overlay.classList.contains("hidden")) return;
-  if (isModePickerOpenNow()) return;
-
-  const rect = canvas.getBoundingClientRect();
-  const x = e.clientX - rect.left;
-  const y = e.clientY - rect.top;
-
-  if (hitBottomRight(x, y)) {
-    showModePicker();
-  }
-}, { passive: true });
-
-// keep init after everything
+// ===================== INIT =====================
+loadMode();
 initArt(currentMode);
+
+// show picker by default + disable canvas pointer events until selection
+showModePicker();
+canvas.style.pointerEvents = "none";
+
 setMicStatus();
+updateConsoleValues();
+requestAnimationFrame(loop);
