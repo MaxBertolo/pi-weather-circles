@@ -4,13 +4,14 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
   <title>π Weather Art</title>
+
   <link rel="stylesheet" href="./style.css" />
 </head>
 <body>
 
   <canvas id="c"></canvas>
 
-  <!-- DEBUG badge: if you don't see this, JS is NOT the file you're editing -->
+  <!-- (opzionale) debug badge se lo usi -->
   <div id="debugBadge" class="debug-badge">JS loading…</div>
 
   <!-- PICKER -->
@@ -18,10 +19,11 @@
     <div class="picker-card">
       <div class="picker-title">Scegli il motivo</div>
 
+      <!-- Se preferisci usare data-mode (consigliato) -->
       <div class="picker-grid">
-        <button id="btnCircles" class="picker-btn" type="button">◯ Cerchi</button>
-        <button id="btnSplash" class="picker-btn" type="button">✦ Splash</button>
-        <button id="btnDiamonds" class="picker-btn" type="button">◇ Diamanti</button>
+        <button class="picker-btn" type="button" data-mode="circles">◯ Cerchi</button>
+        <button class="picker-btn" type="button" data-mode="splash">✦ Splash</button>
+        <button class="picker-btn" type="button" data-mode="diamonds">◇ Diamanti</button>
       </div>
 
       <div class="picker-note">
@@ -31,7 +33,7 @@
   </div>
 
   <!-- MENU -->
-  <div id="overlay" class="overlay hidden">
+  <div id="overlay" class="overlay hidden" aria-hidden="true">
     <div class="menu">
       <div class="menu-head">
         <div class="menu-title">π Weather Art</div>
@@ -48,6 +50,7 @@
       </div>
 
       <div class="menu-section">
+        <!-- AUDIO -->
         <button id="btn-audio" class="btn wide" type="button">🎶 Audio OFF</button>
 
         <div class="row">
@@ -65,7 +68,14 @@
           <input id="audio-volume" type="range" min="0" max="100" value="80" />
         </div>
 
+        <!-- MICROFONO (NUOVO) -->
         <label class="toggle">
+          <input id="toggle-mic" type="checkbox" />
+          🎤 Microfono
+        </label>
+
+        <!-- NOTTE FORZATA -->
+        <label class="toggle" style="margin-top:10px;">
           <input id="toggle-night" type="checkbox" />
           🌙 Notte forzata
         </label>
