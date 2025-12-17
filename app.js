@@ -1,16 +1,16 @@
 (() => {
   /* =========================
-     π Weather Art — app.js (FULL)
+     π Weather Art — app.js (SOFT MUSIC EDITION)
      - Modes: circles / splash / diamonds
      - Picker robust
      - Pink dot opens menu overlay
-     - Bottom-right tap -> back to picker
+     - Bottom-right tap -> picker
      - Weather: Open-Meteo + geolocation
-     - City name: OpenStreetMap Nominatim reverse geocoding
-     - Splash: day bg white + splashes black; night inverse
-     - Signature: MB bottom-right (RED)
-     - MIC: ON => Audio OFF, voice-band filtered. Shapes scale 1x..10x (volume+pitch)
-     - AUDIO: MUCH louder + compressor + makeup gain + rich arpeggiated multi-voice music
+     - City: OpenStreetMap Nominatim reverse
+     - Splash day/night invert rule
+     - Signature MB bottom-right (RED)
+     - MIC: ON => Audio OFF (voice-band filtered). Shapes scale 1x..10x (vol+pitch)
+     - AUDIO: softer, lower, muffled, pleasant. Volume can be set high.
   ========================= */
 
   const PI = Math.PI, TAU = Math.PI * 2;
@@ -122,11 +122,11 @@
   // ===== Weather =====
   const weather = {
     tempC: 18,
-    cloud: 40,     // %
-    rain: 0.2,     // mm/h
-    wind: 2.0,     // m/s
-    windDir: 0,    // deg
-    fog: 0.2,      // 0..1
+    cloud: 40,
+    rain: 0.2,
+    wind: 2.0,
+    windDir: 0,
+    fog: 0.2,
     isDay: true
   };
 
@@ -172,7 +172,6 @@
         d?.address?.municipality ||
         d?.address?.county ||
         "—";
-
       if (ovCity) ovCity.textContent = cityName;
     } catch {
       cityName = "—";
@@ -182,10 +181,7 @@
 
   function requestGeoAndWeather() {
     const geo = navigator.geolocation;
-    if (!geo) {
-      fetchWeather().catch(()=>{});
-      return;
-    }
+    if (!geo) { fetchWeather().catch(()=>{}); return; }
     geo.getCurrentPosition(
       (p) => {
         const { latitude, longitude } = p.coords;
@@ -219,7 +215,6 @@
     const rainN = clamp(weather.rain / 10, 0, 1);
     const windN = clamp(weather.wind / 14, 0, 1);
 
-    // Splash strict rule:
     if (mode === "splash") return day ? "#fff" : "#000";
 
     if (!day) {
@@ -417,7 +412,6 @@
   function updateMic() {
     if (!micOn || !micAnalyser || !micFreq || !micTime) return;
 
-    // RMS -> volume
     micAnalyser.getByteTimeDomainData(micTime);
     let sumSq = 0;
     for (let i = 0; i < micTime.length; i++) {
@@ -427,7 +421,6 @@
     const rms = Math.sqrt(sumSq / micTime.length);
     micGain = clamp(rms * 3.2, 0, 1);
 
-    // centroid -> pitch-ish
     micAnalyser.getByteFrequencyData(micFreq);
     let magSum = 0;
     let weighted = 0;
@@ -454,7 +447,7 @@
   }
 
   // =========================
-  // AUDIO (LOUD + SOFT + RICH)
+  // AUDIO — SOFT, LOW, MUFFLED
   // =========================
   let audioOn = false;
   let audioCtx = null;
@@ -463,6 +456,13 @@
   let comp = null;
   let makeup = null;
   let lp = null;
+
+  // subtle “air” reverb (very light)
+  let revIn = null;
+  let revOut = null;
+  let revDelay = null;
+  let revFB = null;
+  let revLP = null;
 
   let chordTimer = null;
   let userVol = 0.8;
@@ -486,100 +486,180 @@
 
   function midiToHz(m) { return 440 * Math.pow(2, (m - 69) / 12); }
 
+  // More muffled overall (and even more muffled with fog/cloud)
   function timbreCutoff() {
-    const muffle = clamp(weather.fog * 0.85 + (weather.cloud / 100) * 0.55, 0, 1);
-    let c = lerp(16000, 1600, muffle);
-    if (!isDayEffective()) c *= 0.75;
+    const muffle = clamp(weather.fog * 0.95 + (weather.cloud / 100) * 0.70, 0, 1);
+    let c = lerp(5200, 650, muffle);   // << strongly soft
+    if (!isDayEffective()) c *= 0.70;  // night softer
     return c;
   }
 
-  function currentScale() {
-    const g = (genreSel && genreSel.value) ? genreSel.value : "jazz";
-    if (g === "blues") return [0,3,5,6,7,10];
-    if (g === "classical") return [0,2,4,5,7,9,11];
-    if (g === "soul") return [0,2,3,5,7,9,10];
-    return [0,2,3,5,7,9,10];
+  // Keep frequencies away from “annoying bright” range
+  function clampHz(hz) {
+    // cap the maximum pitch to keep it soft
+    return clamp(hz, 55, 520); // ~A1..C5
+  }
+
+  function getGenre() {
+    return (genreSel && genreSel.value) ? genreSel.value : "jazz";
+  }
+
+  function scaleForGenre(g) {
+    // all soft modal palettes
+    if (g === "classical") return [0,2,4,5,7,9,11];  // major
+    if (g === "blues")     return [0,3,5,6,7,10];    // blues
+    if (g === "soul")      return [0,2,3,5,7,9,10];  // dorian
+    return [0,2,3,5,7,9,10];                         // jazz dorian
+  }
+
+  function chordTonesForGenre(g) {
+    // softer extended chords (no sharp/screechy clusters)
+    if (g === "classical") return [0,4,7,11,14];       // maj9
+    if (g === "soul")      return [0,3,7,10,14];       // m9
+    if (g === "blues")     return [0,4,7,10,14];       // dom9
+    return Math.random() < 0.5 ? [0,3,7,10,14] : [0,4,7,11,14]; // m9 / maj9
   }
 
   function chooseRootStep() {
+    // slow harmonic drift (never “jumps” too bright)
     const opts = [0, 2, 4, 5, 7, 9, 10];
-    const bias = Math.random() < 0.55 ? 0 : (Math.random() < 0.5 ? 2 : -2);
-    const idx = (Math.floor(Math.random() * opts.length) + bias + opts.length) % opts.length;
-    return opts[idx];
+    const r = Math.random();
+    if (r < 0.55) return opts[0];
+    if (r < 0.75) return opts[2];
+    if (r < 0.88) return opts[4];
+    return opts[Math.floor(Math.random() * opts.length)];
   }
 
-  function scheduleChord() {
+  function buildSoftReverb() {
+    // Light feedback delay network (cheap, no impulse) => “air”
+    revIn = audioCtx.createGain();
+    revOut = audioCtx.createGain();
+    revDelay = audioCtx.createDelay(0.5);
+    revFB = audioCtx.createGain();
+    revLP = audioCtx.createBiquadFilter();
+
+    revDelay.delayTime.value = 0.18;
+    revFB.gain.value = 0.25;
+    revLP.type = "lowpass";
+    revLP.frequency.value = 2200;
+
+    // feedback loop: delay -> LP -> FB -> delay
+    revIn.connect(revDelay);
+    revDelay.connect(revLP);
+    revLP.connect(revFB);
+    revFB.connect(revDelay);
+
+    // output tap
+    revDelay.connect(revOut);
+
+    // mix level very subtle (kept low by default)
+    revOut.gain.value = 0.10;
+  }
+
+  function updateReverbByWeather() {
+    if (!revOut || !revLP) return;
+    const fog = clamp(weather.fog, 0, 1);
+    const clouds = clamp(weather.cloud / 100, 0, 1);
+    const rainN = clamp(weather.rain / 10, 0, 1);
+
+    // more fog/cloud => more muffled and slightly more tail
+    revLP.frequency.setTargetAtTime(lerp(2600, 900, clamp(fog + clouds * 0.6, 0, 1)), audioCtx.currentTime, 0.2);
+    revOut.gain.setTargetAtTime(lerp(0.08, 0.14, clamp(fog + rainN * 0.4, 0, 1)), audioCtx.currentTime, 0.2);
+    if (revDelay) revDelay.delayTime.setTargetAtTime(lerp(0.16, 0.22, clamp(rainN + fog, 0, 1)), audioCtx.currentTime, 0.2);
+    if (revFB) revFB.gain.setTargetAtTime(lerp(0.22, 0.32, clamp(rainN + fog, 0, 1)), audioCtx.currentTime, 0.2);
+  }
+
+  function scheduleSoftPhrase() {
     if (!audioCtx) return;
 
+    const g = getGenre();
+
+    // weather energy influences tempo/density but stays calm
     const tN = tempNorm(weather.tempC);
     const rainN = clamp(weather.rain / 10, 0, 1);
     const windN = clamp(weather.wind / 12, 0, 1);
+    const fogN = clamp(weather.fog, 0, 1);
     const cloudN = clamp(weather.cloud / 100, 0, 1);
-    const energy = clamp(tN * 0.55 + rainN * 0.55 + windN * 0.20 + cloudN * 0.10, 0, 1);
 
-    let bpm = lerp(42, 98, energy);
-    if (!isDayEffective()) bpm *= 0.80;
+    const energy = clamp(tN * 0.35 + rainN * 0.30 + windN * 0.15, 0, 1);
+    let bpm = lerp(34, 62, energy);              // << calm range
+    if (!isDayEffective()) bpm *= 0.86;          // night slower
 
     const beat = 60 / bpm;
-    const dur = beat * lerp(3.8, 7.5, Math.random());
+    const phraseDur = beat * lerp(6.0, 10.0, Math.random()); // long phrases
 
-    const g = (genreSel && genreSel.value) ? genreSel.value : "jazz";
-    const scale = currentScale();
+    const scale = scaleForGenre(g);
+    const chordTones = chordTonesForGenre(g);
 
-    const baseKey = 48;
-    const root = baseKey + chooseRootStep() + (Math.random() < 0.30 ? 12 : 0);
+    // base key low (no acuti)
+    const baseKey = 38; // D2-ish
+    const root = baseKey + chooseRootStep() + (Math.random() < 0.25 ? 12 : 0);
 
-    const chordTones = (g === "blues")
-      ? [0, 4, 7, 10, 14, 17]
-      : (Math.random() < 0.5
-          ? [0, 3, 7, 10, 14, 17, 21]
-          : [0, 4, 7, 11, 14, 16, 21]);
+    // cutoff updates (muffled)
+    lp.frequency.setTargetAtTime(timbreCutoff(), audioCtx.currentTime, 0.35);
+    updateReverbByWeather();
+
+    // voice count: soft layers, not too many transients
+    const voices = (g === "classical") ? 6 : 7;
+
+    // dynamics: softer with fog/cloud/night
+    const softness = clamp(0.35 + fogN * 0.35 + cloudN * 0.20 + (!isDayEffective() ? 0.20 : 0), 0, 1);
+    const baseVel = lerp(0.050, 0.026, softness); // smaller gain when muffled
 
     const now = audioCtx.currentTime;
 
-    // timbre follows fog/cloud
-    lp.frequency.setTargetAtTime(timbreCutoff(), now, 0.25);
-
-    const voices = Math.floor(lerp(6, 8, Math.random()));
-    const baseVel = lerp(0.020, 0.045, 1 - energy) * (isDayEffective() ? 1.0 : 0.75);
-
     for (let i = 0; i < voices; i++) {
-      const useChord = Math.random() < 0.72;
+      // choose mostly chord tones, sometimes passing scale tone
+      const useChord = Math.random() < 0.78;
       const semi = useChord
         ? chordTones[i % chordTones.length]
         : scale[Math.floor(Math.random() * scale.length)];
 
-      const octave = (Math.random() < 0.55) ? 12 : 24;
-      const midi = root + semi + octave + (Math.random() < 0.12 ? 12 : 0);
+      // keep octave low-mid (no 2-octave jumps)
+      const octave = (Math.random() < 0.85) ? 12 : 19;        // rarely higher than ~a fifth above
+      const extraHigh = (Math.random() < 0.02) ? 12 : 0;      // almost never
+
+      const midi = root + semi + octave + extraHigh;
 
       const o = audioCtx.createOscillator();
       const gN = audioCtx.createGain();
       const p = audioCtx.createStereoPanner();
 
-      o.type = (g === "classical")
-        ? "sine"
-        : (Math.random() < 0.55 ? "triangle" : "sine");
+      // oscillator types: mellow only
+      o.type = (g === "classical") ? "sine" : (Math.random() < 0.65 ? "triangle" : "sine");
 
-      o.frequency.value = midiToHz(midi);
-      o.detune.value = lerp(-9, 9, Math.random());
-      p.pan.value = lerp(-0.75, 0.75, Math.random());
+      // clamp frequency to avoid annoying highs
+      const hz = clampHz(midiToHz(midi));
+      o.frequency.value = hz;
 
-      const t0 = now + i * beat * 0.22;
-      const vel = baseVel * lerp(0.75, 1.15, Math.random());
+      // very small detune => no harsh beating
+      o.detune.value = lerp(-5, 5, Math.random());
 
+      // stereo gentle
+      p.pan.value = lerp(-0.55, 0.55, Math.random());
+
+      // timing: slow arpeggio, not clicky
+      const t0 = now + i * beat * 0.35 + lerp(0, 0.08, Math.random());
+      const vel = (baseVel / voices) * lerp(0.85, 1.10, Math.random());
+
+      // envelope: slow attack + long release
       gN.gain.setValueAtTime(0.0001, t0);
-      gN.gain.linearRampToValueAtTime(vel / voices, t0 + 0.10);
-      gN.gain.setTargetAtTime(0.0001, t0 + dur, 0.35);
+      gN.gain.linearRampToValueAtTime(vel, t0 + lerp(0.18, 0.35, softness));
+      gN.gain.setTargetAtTime(0.0001, t0 + phraseDur, lerp(0.55, 0.85, softness));
 
+      // route dry to LP
       o.connect(gN);
       gN.connect(p);
       p.connect(lp);
 
+      // route a little to reverb send
+      if (revIn) p.connect(revIn);
+
       o.start(t0);
-      o.stop(t0 + dur + 1.0);
+      o.stop(t0 + phraseDur + 1.2);
     }
 
-    chordTimer = setTimeout(scheduleChord, dur * 1000);
+    chordTimer = setTimeout(scheduleSoftPhrase, phraseDur * 1000);
   }
 
   async function audioEnable() {
@@ -594,52 +674,66 @@
 
     master = audioCtx.createGain();
     const volCurve = Math.pow(userVol, 0.6);
-    master.gain.value = 3.2 * volCurve; // << molto più alto
+    master.gain.value = 3.2 * volCurve; // high volume range (user sets slider)
 
-    // compressor stronger
+    // compressor: smooth, prevents peaks
     comp = audioCtx.createDynamicsCompressor();
-    comp.threshold.value = -28;
-    comp.knee.value = 30;
-    comp.ratio.value = 4.2;
+    comp.threshold.value = -30;
+    comp.knee.value = 32;
+    comp.ratio.value = 4.5;
     comp.attack.value = 0.02;
-    comp.release.value = 0.25;
+    comp.release.value = 0.28;
 
-    // makeup gain (clean boost)
     makeup = audioCtx.createGain();
-    makeup.gain.value = 1.4;
+    makeup.gain.value = 1.35;
 
+    // lowpass for “ovattato” timbre
     lp = audioCtx.createBiquadFilter();
     lp.type = "lowpass";
     lp.frequency.value = timbreCutoff();
-    lp.Q.value = 0.8;
+    lp.Q.value = 0.85;
 
-    // routing: voices -> lp -> comp -> makeup -> master -> destination
-    lp.connect(comp);
+    // tiny high-shelf attenuation (extra softness)
+    const hs = audioCtx.createBiquadFilter();
+    hs.type = "highshelf";
+    hs.frequency.value = 2200;
+    hs.gain.value = -5.5;
+
+    // build subtle reverb
+    buildSoftReverb();
+
+    // routing:
+    // voices -> lp -> hs -> comp -> makeup -> master -> out
+    lp.connect(hs);
+    hs.connect(comp);
     comp.connect(makeup);
     makeup.connect(master);
     master.connect(audioCtx.destination);
 
+    // reverb out -> after filter -> comp
+    if (revOut) {
+      revOut.connect(comp);
+    }
+
     audioOn = true;
-    setAudioButton();
+    if (btnAudio) btnAudio.textContent = "🎶 Audio ON";
 
     if (chordTimer) clearTimeout(chordTimer);
     chordTimer = null;
-    scheduleChord();
+    scheduleSoftPhrase();
   }
 
   async function audioDisable() {
     audioOn = false;
-    setAudioButton();
+    if (btnAudio) btnAudio.textContent = "🎶 Audio OFF";
 
     try { if (chordTimer) clearTimeout(chordTimer); } catch {}
     chordTimer = null;
 
     try { if (audioCtx) await audioCtx.close(); } catch {}
     audioCtx = null;
-    master = null;
-    comp = null;
-    makeup = null;
-    lp = null;
+    master = null; comp = null; makeup = null; lp = null;
+    revIn = revOut = revDelay = revFB = revLP = null;
   }
 
   if (btnAudio) {
@@ -655,7 +749,7 @@
       if (audioOn) {
         try { if (chordTimer) clearTimeout(chordTimer); } catch {}
         chordTimer = null;
-        scheduleChord();
+        scheduleSoftPhrase();
       }
     });
   }
@@ -759,7 +853,6 @@
   }
 
   function draw(ms) {
-    // mic-driven scale 1..10
     const micMix = clamp((micSmooth * 0.75) + (micPitch * 0.25), 0, 1);
     const micScale = micOn ? lerp(1, 10, micMix) : 1;
 
