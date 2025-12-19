@@ -11,6 +11,7 @@
      - Signature MB bottom-right (RED)
      - MIC: ON => Audio OFF (voice-band filtered). Shapes scale 1x..10x (vol+pitch)
      - AUDIO: softer, lower, muffled, pleasant. Volume can be set high.
+     - Option A: open YouTube Jazz/Soul in new tab from menu buttons
   ========================= */
 
   const PI = Math.PI, TAU = Math.PI * 2;
@@ -41,6 +42,18 @@
   const volSlider = document.getElementById("audio-volume");
   const toggleNight = document.getElementById("toggle-night");
   const toggleMic = document.getElementById("toggle-mic");
+
+  // --- Option A (YouTube open buttons) ---
+  const btnOpenJazz = document.getElementById("btn-open-jazz");
+  const btnOpenSoul = document.getElementById("btn-open-soul");
+
+  const YT_JAZZ_URL = "https://www.youtube.com/watch?v=EIw8SO6dadQ&list=RDEIw8SO6dadQ&start_radio=1";
+  const YT_SOUL_URL = "https://www.youtube.com/watch?v=gQRtAnPL6HM&list=RDgQRtAnPL6HM&start_radio=1";
+
+  function openYouTube(url) {
+    // iOS/Safari: must be called directly from a user gesture (button click)
+    window.open(url, "_blank", "noopener,noreferrer");
+  }
 
   // ===== Resize =====
   let W = 0, H = 0, DPR = 1;
@@ -759,6 +772,25 @@
     try { if (audioCtx && audioCtx.state !== "running") await audioCtx.resume(); } catch {}
     try { if (micCtx && micCtx.state !== "running") await micCtx.resume(); } catch {}
   }, { passive: true });
+
+  // --- Option A handlers: open YouTube and avoid overlapping audio/mic ---
+  if (btnOpenJazz) {
+    btnOpenJazz.addEventListener("pointerdown", (e) => {
+      e.preventDefault();
+      if (audioOn) audioDisable(); // fire-and-forget ok
+      if (micOn) { disableMic(); if (toggleMic) toggleMic.checked = false; }
+      openYouTube(YT_JAZZ_URL);
+    }, { passive: false });
+  }
+
+  if (btnOpenSoul) {
+    btnOpenSoul.addEventListener("pointerdown", (e) => {
+      e.preventDefault();
+      if (audioOn) audioDisable(); // fire-and-forget ok
+      if (micOn) { disableMic(); if (toggleMic) toggleMic.checked = false; }
+      openYouTube(YT_SOUL_URL);
+    }, { passive: false });
+  }
 
   // ===== Motion =====
   function step(dt, ms) {
