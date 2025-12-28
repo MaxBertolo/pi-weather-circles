@@ -5,6 +5,16 @@
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
   <title>π Weather Art</title>
 
+  <!-- PWA / Standalone -->
+  <link rel="manifest" href="./manifest.webmanifest">
+  <meta name="theme-color" content="#000000">
+
+  <!-- iOS “Add to Home Screen” -->
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="MB Art">
+  <link rel="apple-touch-icon" href="./icon-192.png">
+
   <!-- Font più “artistico” (usato anche per la firma MB) -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -54,7 +64,9 @@
       </div>
 
       <div class="menu-section">
-       <button id="btn-fs-exit" class="btn wide" type="button">⤢ Esci schermo intero</button>
+        <!-- Fullscreen controls (useful on desktop/Android; iOS standalone is already browserless) -->
+        <button id="btn-fs" class="btn wide" type="button">⛶ Schermo intero</button>
+        <button id="btn-fs-exit" class="btn wide" type="button">⤢ Esci schermo intero</button>
 
         <div class="row">
           <span class="icon">🎷</span>
@@ -85,5 +97,14 @@
   </div>
 
   <script src="./app.js"></script>
+
+  <!-- Service Worker: enables PWA behavior -->
+  <script>
+    if ("serviceWorker" in navigator) {
+      window.addEventListener("load", () => {
+        navigator.serviceWorker.register("./sw.js").catch(console.warn);
+      });
+    }
+  </script>
 </body>
 </html>
