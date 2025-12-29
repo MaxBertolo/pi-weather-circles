@@ -1123,7 +1123,9 @@
       const cloudN = clamp(weather.cloud / 100, 0, 1);
       const storm = clamp(rainN * 0.90 + windN * 0.35 + cloudN * 0.22, 0, 1);
 
-      const paint = day ? "rgba(25,90,255,0.88)" : "rgba(255,255,255,0.90)";
+      const paint = day ? "rgba(0,0,0,0.90)"      // COLA NERO di giorno
+      : "rgba(255,255,255,0.90)"; // COLA BIANCO di notte
+
       ctx.fillStyle = paint;
 
       // top “pool band”
