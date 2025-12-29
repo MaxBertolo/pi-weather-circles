@@ -1,7 +1,7 @@
 (() => {
   /* =========================
      π Weather Art — app.js (SOFT MUSIC EDITION)
-     - Modes: circles / splash / diamonds
+     - Modes: circles / splash / diamonds / cloud / cola
      - Picker robust
      - Pink dot opens menu overlay
      - Bottom-right tap -> picker
@@ -12,6 +12,10 @@
      - MIC: ON => Audio OFF (voice-band filtered). Shapes scale 1x..10x (vol+pitch)
      - AUDIO: softer, lower, muffled, pleasant. Volume can be set high.
      - Option A: open YouTube Jazz/Soul in new tab from menu buttons
+
+     NEW:
+     - CLOUD: 3000 watercolor dots, multi-cluster density, day white+blue, night black+white
+     - COLA: dripping paint from top, day blue on white, night inverted, speed follows storm
   ========================= */
 
   const PI = Math.PI, TAU = Math.PI * 2;
@@ -51,7 +55,6 @@
   const YT_SOUL_URL = "https://www.youtube.com/watch?v=gQRtAnPL6HM&list=RDgQRtAnPL6HM&start_radio=1";
 
   function openYouTube(url) {
-    // iOS/Safari: must be called directly from a user gesture (button click)
     window.open(url, "_blank", "noopener,noreferrer");
   }
 
@@ -102,7 +105,7 @@
   if (overlay) overlay.addEventListener("pointerdown", (e) => { if (e.target === overlay) closeMenu(); }, { passive: true });
 
   // ===== Modes =====
-  const MODES = ["circles", "splash", "diamonds"];
+  const MODES = ["circles", "splash", "diamonds", "cloud", "cola"];
   let currentMode = "circles";
   try {
     const m = localStorage.getItem("pi_mode");
@@ -228,6 +231,9 @@
     const rainN = clamp(weather.rain / 10, 0, 1);
     const windN = clamp(weather.wind / 14, 0, 1);
 
+    // Cloud & Cola: pure invert day/night background
+    if (mode === "cloud" || mode === "cola") return day ? "#fff" : "#000";
+
     if (mode === "splash") return day ? "#fff" : "#000";
 
     if (!day) {
@@ -260,12 +266,24 @@
   let circles = [];
   let splashes = [];
   let diamonds = [];
+  let clouds = [];  // NEW
+  let colas = [];   // NEW
   let pink = null;
+
+  // small gaussian helper (Box-Muller)
+  function randN() {
+    let u = 0, v = 0;
+    while (u === 0) u = Math.random();
+    while (v === 0) v = Math.random();
+    return Math.sqrt(-2.0 * Math.log(u)) * Math.cos(TAU * v);
+  }
 
   function initArt(mode) {
     circles = [];
     splashes = [];
     diamonds = [];
+    clouds = [];
+    colas = [];
 
     pink = {
       x: Math.random() * W,
@@ -326,6 +344,77 @@
           amt: lerp(0.08, 0.22, Math.random()),
           alpha: lerp(0.65, 0.95, Math.random()),
           c: DIAMOND_PALETTE[i % DIAMOND_PALETTE.length]
+        });
+      }
+    }
+
+    // ===== CLOUD (multi-cluster watercolor dots) =====
+    if (mode === "cloud") {
+      const N = 3000;
+
+      // Create multiple cluster centers (like a real cloud mass)
+      const clusterCount = 6;
+      const centers = [];
+      for (let k = 0; k < clusterCount; k++) {
+        centers.push({
+          cx: W * 0.5 + (Math.random() - 0.5) * W * 0.22,
+          cy: H * 0.45 + (Math.random() - 0.5) * H * 0.18,
+          sx: lerp(W * 0.04, W * 0.12, Math.random()),
+          sy: lerp(H * 0.03, H * 0.10, Math.random()),
+          w: lerp(0.10, 0.28, Math.random())
+        });
+      }
+      // Normalize weights
+      const sumW = centers.reduce((s, c) => s + c.w, 0);
+      centers.forEach(c => c.w /= sumW);
+
+      function pickCenter() {
+        let r = Math.random();
+        for (const c of centers) {
+          r -= c.w;
+          if (r <= 0) return c;
+        }
+        return centers[centers.length - 1];
+      }
+
+      for (let i = 0; i < N; i++) {
+        const c = pickCenter();
+        const x = c.cx + randN() * c.sx;
+        const y = c.cy + randN() * c.sy;
+
+        // watercolor: varying alpha + small sizes
+        const rr = lerp(0.6, 2.3, Math.random());
+        const a = lerp(0.10, 0.35, Math.random()); // delicate wash
+        const hueJ = lerp(-18, 14, Math.random());  // small hue drift in “blue range”
+
+        clouds.push({
+          x, y,
+          // anchor offsets for “breathing”/cohesion
+          ox: x - W * 0.5,
+          oy: y - H * 0.45,
+          r: rr,
+          a,
+          hueJ,
+          p: Math.random() * TAU,
+          sp: lerp(0.5, 1.6, Math.random()),
+          drift: lerp(0.4, 1.35, Math.random())
+        });
+      }
+    }
+
+    // ===== COLA (dripping paint from top) =====
+    if (mode === "cola") {
+      const K = Math.max(18, Math.floor(W / 26)); // number of drip columns
+      for (let i = 0; i < K; i++) {
+        const x = (i + 0.5) * (W / K);
+        colas.push({
+          x,
+          w: lerp(10, 30, Math.random()),
+          len: lerp(10, 140, Math.random()),
+          v: lerp(10, 34, Math.random()),
+          wob: Math.random() * TAU,
+          wobSp: lerp(0.6, 1.7, Math.random()),
+          ph: Math.random() * TAU
         });
       }
     }
@@ -499,18 +588,15 @@
 
   function midiToHz(m) { return 440 * Math.pow(2, (m - 69) / 12); }
 
-  // More muffled overall (and even more muffled with fog/cloud)
   function timbreCutoff() {
     const muffle = clamp(weather.fog * 0.95 + (weather.cloud / 100) * 0.70, 0, 1);
-    let c = lerp(5200, 650, muffle);   // << strongly soft
-    if (!isDayEffective()) c *= 0.70;  // night softer
+    let c = lerp(5200, 650, muffle);
+    if (!isDayEffective()) c *= 0.70;
     return c;
   }
 
-  // Keep frequencies away from “annoying bright” range
   function clampHz(hz) {
-    // cap the maximum pitch to keep it soft
-    return clamp(hz, 55, 520); // ~A1..C5
+    return clamp(hz, 55, 520);
   }
 
   function getGenre() {
@@ -518,23 +604,20 @@
   }
 
   function scaleForGenre(g) {
-    // all soft modal palettes
-    if (g === "classical") return [0,2,4,5,7,9,11];  // major
-    if (g === "blues")     return [0,3,5,6,7,10];    // blues
-    if (g === "soul")      return [0,2,3,5,7,9,10];  // dorian
-    return [0,2,3,5,7,9,10];                         // jazz dorian
+    if (g === "classical") return [0,2,4,5,7,9,11];
+    if (g === "blues")     return [0,3,5,6,7,10];
+    if (g === "soul")      return [0,2,3,5,7,9,10];
+    return [0,2,3,5,7,9,10];
   }
 
   function chordTonesForGenre(g) {
-    // softer extended chords (no sharp/screechy clusters)
-    if (g === "classical") return [0,4,7,11,14];       // maj9
-    if (g === "soul")      return [0,3,7,10,14];       // m9
-    if (g === "blues")     return [0,4,7,10,14];       // dom9
-    return Math.random() < 0.5 ? [0,3,7,10,14] : [0,4,7,11,14]; // m9 / maj9
+    if (g === "classical") return [0,4,7,11,14];
+    if (g === "soul")      return [0,3,7,10,14];
+    if (g === "blues")     return [0,4,7,10,14];
+    return Math.random() < 0.5 ? [0,3,7,10,14] : [0,4,7,11,14];
   }
 
   function chooseRootStep() {
-    // slow harmonic drift (never “jumps” too bright)
     const opts = [0, 2, 4, 5, 7, 9, 10];
     const r = Math.random();
     if (r < 0.55) return opts[0];
@@ -544,7 +627,6 @@
   }
 
   function buildSoftReverb() {
-    // Light feedback delay network (cheap, no impulse) => “air”
     revIn = audioCtx.createGain();
     revOut = audioCtx.createGain();
     revDelay = audioCtx.createDelay(0.5);
@@ -556,27 +638,22 @@
     revLP.type = "lowpass";
     revLP.frequency.value = 2200;
 
-    // feedback loop: delay -> LP -> FB -> delay
     revIn.connect(revDelay);
     revDelay.connect(revLP);
     revLP.connect(revFB);
     revFB.connect(revDelay);
 
-    // output tap
     revDelay.connect(revOut);
-
-    // mix level very subtle (kept low by default)
     revOut.gain.value = 0.10;
   }
 
   function updateReverbByWeather() {
     if (!revOut || !revLP) return;
     const fog = clamp(weather.fog, 0, 1);
-    const clouds = clamp(weather.cloud / 100, 0, 1);
+    const cloudsN = clamp(weather.cloud / 100, 0, 1);
     const rainN = clamp(weather.rain / 10, 0, 1);
 
-    // more fog/cloud => more muffled and slightly more tail
-    revLP.frequency.setTargetAtTime(lerp(2600, 900, clamp(fog + clouds * 0.6, 0, 1)), audioCtx.currentTime, 0.2);
+    revLP.frequency.setTargetAtTime(lerp(2600, 900, clamp(fog + cloudsN * 0.6, 0, 1)), audioCtx.currentTime, 0.2);
     revOut.gain.setTargetAtTime(lerp(0.08, 0.14, clamp(fog + rainN * 0.4, 0, 1)), audioCtx.currentTime, 0.2);
     if (revDelay) revDelay.delayTime.setTargetAtTime(lerp(0.16, 0.22, clamp(rainN + fog, 0, 1)), audioCtx.currentTime, 0.2);
     if (revFB) revFB.gain.setTargetAtTime(lerp(0.22, 0.32, clamp(rainN + fog, 0, 1)), audioCtx.currentTime, 0.2);
@@ -587,7 +664,6 @@
 
     const g = getGenre();
 
-    // weather energy influences tempo/density but stays calm
     const tN = tempNorm(weather.tempC);
     const rainN = clamp(weather.rain / 10, 0, 1);
     const windN = clamp(weather.wind / 12, 0, 1);
@@ -595,42 +671,36 @@
     const cloudN = clamp(weather.cloud / 100, 0, 1);
 
     const energy = clamp(tN * 0.35 + rainN * 0.30 + windN * 0.15, 0, 1);
-    let bpm = lerp(34, 62, energy);              // << calm range
-    if (!isDayEffective()) bpm *= 0.86;          // night slower
+    let bpm = lerp(34, 62, energy);
+    if (!isDayEffective()) bpm *= 0.86;
 
     const beat = 60 / bpm;
-    const phraseDur = beat * lerp(6.0, 10.0, Math.random()); // long phrases
+    const phraseDur = beat * lerp(6.0, 10.0, Math.random());
 
     const scale = scaleForGenre(g);
     const chordTones = chordTonesForGenre(g);
 
-    // base key low (no acuti)
-    const baseKey = 38; // D2-ish
+    const baseKey = 38;
     const root = baseKey + chooseRootStep() + (Math.random() < 0.25 ? 12 : 0);
 
-    // cutoff updates (muffled)
     lp.frequency.setTargetAtTime(timbreCutoff(), audioCtx.currentTime, 0.35);
     updateReverbByWeather();
 
-    // voice count: soft layers, not too many transients
     const voices = (g === "classical") ? 6 : 7;
 
-    // dynamics: softer with fog/cloud/night
     const softness = clamp(0.35 + fogN * 0.35 + cloudN * 0.20 + (!isDayEffective() ? 0.20 : 0), 0, 1);
-    const baseVel = lerp(0.050, 0.026, softness); // smaller gain when muffled
+    const baseVel = lerp(0.050, 0.026, softness);
 
     const now = audioCtx.currentTime;
 
     for (let i = 0; i < voices; i++) {
-      // choose mostly chord tones, sometimes passing scale tone
       const useChord = Math.random() < 0.78;
       const semi = useChord
         ? chordTones[i % chordTones.length]
         : scale[Math.floor(Math.random() * scale.length)];
 
-      // keep octave low-mid (no 2-octave jumps)
-      const octave = (Math.random() < 0.85) ? 12 : 19;        // rarely higher than ~a fifth above
-      const extraHigh = (Math.random() < 0.02) ? 12 : 0;      // almost never
+      const octave = (Math.random() < 0.85) ? 12 : 19;
+      const extraHigh = (Math.random() < 0.02) ? 12 : 0;
 
       const midi = root + semi + octave + extraHigh;
 
@@ -638,34 +708,25 @@
       const gN = audioCtx.createGain();
       const p = audioCtx.createStereoPanner();
 
-      // oscillator types: mellow only
       o.type = (g === "classical") ? "sine" : (Math.random() < 0.65 ? "triangle" : "sine");
 
-      // clamp frequency to avoid annoying highs
       const hz = clampHz(midiToHz(midi));
       o.frequency.value = hz;
 
-      // very small detune => no harsh beating
       o.detune.value = lerp(-5, 5, Math.random());
-
-      // stereo gentle
       p.pan.value = lerp(-0.55, 0.55, Math.random());
 
-      // timing: slow arpeggio, not clicky
       const t0 = now + i * beat * 0.35 + lerp(0, 0.08, Math.random());
       const vel = (baseVel / voices) * lerp(0.85, 1.10, Math.random());
 
-      // envelope: slow attack + long release
       gN.gain.setValueAtTime(0.0001, t0);
       gN.gain.linearRampToValueAtTime(vel, t0 + lerp(0.18, 0.35, softness));
       gN.gain.setTargetAtTime(0.0001, t0 + phraseDur, lerp(0.55, 0.85, softness));
 
-      // route dry to LP
       o.connect(gN);
       gN.connect(p);
       p.connect(lp);
 
-      // route a little to reverb send
       if (revIn) p.connect(revIn);
 
       o.start(t0);
@@ -676,7 +737,6 @@
   }
 
   async function audioEnable() {
-    // mic priority
     if (micOn) {
       disableMic();
       if (toggleMic) toggleMic.checked = false;
@@ -687,9 +747,8 @@
 
     master = audioCtx.createGain();
     const volCurve = Math.pow(userVol, 0.6);
-    master.gain.value = 3.2 * volCurve; // high volume range (user sets slider)
+    master.gain.value = 3.2 * volCurve;
 
-    // compressor: smooth, prevents peaks
     comp = audioCtx.createDynamicsCompressor();
     comp.threshold.value = -30;
     comp.knee.value = 32;
@@ -700,33 +759,25 @@
     makeup = audioCtx.createGain();
     makeup.gain.value = 1.35;
 
-    // lowpass for “ovattato” timbre
     lp = audioCtx.createBiquadFilter();
     lp.type = "lowpass";
     lp.frequency.value = timbreCutoff();
     lp.Q.value = 0.85;
 
-    // tiny high-shelf attenuation (extra softness)
     const hs = audioCtx.createBiquadFilter();
     hs.type = "highshelf";
     hs.frequency.value = 2200;
     hs.gain.value = -5.5;
 
-    // build subtle reverb
     buildSoftReverb();
 
-    // routing:
-    // voices -> lp -> hs -> comp -> makeup -> master -> out
     lp.connect(hs);
     hs.connect(comp);
     comp.connect(makeup);
     makeup.connect(master);
     master.connect(audioCtx.destination);
 
-    // reverb out -> after filter -> comp
-    if (revOut) {
-      revOut.connect(comp);
-    }
+    if (revOut) revOut.connect(comp);
 
     audioOn = true;
     if (btnAudio) btnAudio.textContent = "🎶 Audio ON";
@@ -767,17 +818,15 @@
     });
   }
 
-  // Ensure contexts resume on user gesture (iOS/Chrome)
   document.addEventListener("pointerdown", async () => {
     try { if (audioCtx && audioCtx.state !== "running") await audioCtx.resume(); } catch {}
     try { if (micCtx && micCtx.state !== "running") await micCtx.resume(); } catch {}
   }, { passive: true });
 
-  // --- Option A handlers: open YouTube and avoid overlapping audio/mic ---
   if (btnOpenJazz) {
     btnOpenJazz.addEventListener("pointerdown", (e) => {
       e.preventDefault();
-      if (audioOn) audioDisable(); // fire-and-forget ok
+      if (audioOn) audioDisable();
       if (micOn) { disableMic(); if (toggleMic) toggleMic.checked = false; }
       openYouTube(YT_JAZZ_URL);
     }, { passive: false });
@@ -786,7 +835,7 @@
   if (btnOpenSoul) {
     btnOpenSoul.addEventListener("pointerdown", (e) => {
       e.preventDefault();
-      if (audioOn) audioDisable(); // fire-and-forget ok
+      if (audioOn) audioDisable();
       if (micOn) { disableMic(); if (toggleMic) toggleMic.checked = false; }
       openYouTube(YT_SOUL_URL);
     }, { passive: false });
@@ -799,6 +848,9 @@
     const tN = tempNorm(weather.tempC);
     const rainN = clamp(weather.rain / 10, 0, 1);
     const { wx, wy, windN } = windVec();
+    const cloudN = clamp(weather.cloud / 100, 0, 1);
+    const fogN = clamp(weather.fog, 0, 1);
+
     const energy = clamp(tN * 0.55 + rainN * 0.55 + windN * 0.20, 0, 1);
 
     // pink
@@ -869,6 +921,60 @@
         if (d.y > H + pad) d.y = -pad;
       }
     }
+
+    // ===== CLOUD motion (multi-cluster cohesion + chaos) =====
+    if (currentMode === "cloud") {
+      const day = isDayEffective();
+      const sunny = (cloudN < 0.22 && fogN < 0.25 && rainN < 0.05 && day);
+      const storm = clamp(rainN * 0.85 + windN * 0.35 + cloudN * 0.35, 0, 1);
+      const chaos = sunny ? 0.12 : lerp(0.28, 1.0, storm);
+
+      // breathing & expansion (bad weather expands + jitter)
+      const breathe = 1 + Math.sin(ms / 1400) * lerp(0.02, 0.09, chaos);
+      const expand = lerp(0.92, 1.18, chaos);
+
+      for (const d of clouds) {
+        d.p += dt * d.sp * (0.6 + 2.4 * chaos);
+
+        const targetX = W * 0.5 + d.ox * breathe * expand;
+        const targetY = H * 0.45 + d.oy * breathe * expand;
+
+        const pull = lerp(0.55, 2.2, chaos);   // cohesion pull increases with chaos (so it “trembles” around center)
+        const jitter = lerp(3, 95, chaos) * (0.35 + d.drift);
+
+        d.x += (targetX - d.x) * dt * pull + Math.cos(d.p) * jitter * dt + wx * (30 + 110 * windN) * dt;
+        d.y += (targetY - d.y) * dt * pull + Math.sin(d.p) * jitter * dt + wy * (30 + 110 * windN) * dt;
+
+        if (d.x < -80) d.x = W + 80;
+        if (d.x > W + 80) d.x = -80;
+        if (d.y < -80) d.y = H + 80;
+        if (d.y > H + 80) d.y = -80;
+      }
+    }
+
+    // ===== COLA motion =====
+    if (currentMode === "cola") {
+      const storm = clamp(rainN * 0.90 + windN * 0.35 + cloudN * 0.22, 0, 1);
+      const speedMul = lerp(0.45, 3.0, storm);
+
+      for (const c of colas) {
+        c.wob += dt * c.wobSp;
+        c.ph += dt * (0.7 + 1.6 * storm);
+
+        // “flow”
+        c.len += dt * c.v * speedMul;
+        c.len += Math.sin(c.ph) * lerp(0.15, 1.4, storm);
+
+        // reset when too long
+        const maxLen = H * lerp(0.50, 1.10, storm);
+        if (c.len > maxLen) {
+          c.len = lerp(10, 160, Math.random());
+          c.w = lerp(10, 30, Math.random());
+          c.v = lerp(10, 34, Math.random());
+          c.wobSp = lerp(0.6, 1.7, Math.random());
+        }
+      }
+    }
   }
 
   // ===== Draw helpers =====
@@ -882,6 +988,29 @@
   function rotPt(x, y, a) {
     const c = Math.cos(a), s = Math.sin(a);
     return { x: x * c - y * s, y: x * s + y * c };
+  }
+  function roundRectPath(x, y, w, h, r) {
+    const rr = Math.max(0, Math.min(r, Math.min(w, h) / 2));
+    ctx.beginPath();
+    ctx.moveTo(x + rr, y);
+    ctx.lineTo(x + w - rr, y);
+    ctx.quadraticCurveTo(x + w, y, x + w, y + rr);
+    ctx.lineTo(x + w, y + h - rr);
+    ctx.quadraticCurveTo(x + w, y + h, x + w - rr, y + h);
+    ctx.lineTo(x + rr, y + h);
+    ctx.quadraticCurveTo(x, y + h, x, y + h - rr);
+    ctx.lineTo(x, y + rr);
+    ctx.quadraticCurveTo(x, y, x + rr, y);
+    ctx.closePath();
+  }
+
+  // watercolor blue (slight hue drift)
+  function watercolorBlueAlpha(alpha, hueJ = 0) {
+    // base around: rgb(35, 120, 255) but softened
+    const r = Math.floor(clamp(35 + hueJ * 0.15, 0, 255));
+    const g = Math.floor(clamp(120 + hueJ * 0.35, 0, 255));
+    const b = Math.floor(clamp(245 + hueJ * 0.10, 0, 255));
+    return `rgba(${r},${g},${b},${alpha})`;
   }
 
   function draw(ms) {
@@ -958,6 +1087,61 @@
         ctx.lineTo(d.x + p2.x, d.y + p2.y);
         ctx.lineTo(d.x + p3.x, d.y + p3.y);
         ctx.closePath();
+        ctx.fill();
+      }
+    }
+
+    // ===== CLOUD draw (watercolor dots) =====
+    if (currentMode === "cloud") {
+      const day = isDayEffective();
+
+      // “wash” feel
+      ctx.save();
+      ctx.globalCompositeOperation = day ? "multiply" : "source-over";
+
+      for (const d of clouds) {
+        const rr = d.r * (0.85 + 0.25 * micScale);
+        const a = day ? d.a : Math.max(0.10, d.a + 0.15);
+
+        ctx.fillStyle = day
+          ? watercolorBlueAlpha(a, d.hueJ)
+          : `rgba(255,255,255,${clamp(a + 0.15, 0, 0.75)})`;
+
+        ctx.beginPath();
+        ctx.arc(d.x, d.y, rr, 0, TAU);
+        ctx.fill();
+      }
+
+      ctx.restore();
+    }
+
+    // ===== COLA draw (dripping paint) =====
+    if (currentMode === "cola") {
+      const day = isDayEffective();
+      const rainN = clamp(weather.rain / 10, 0, 1);
+      const windN = clamp(weather.wind / 12, 0, 1);
+      const cloudN = clamp(weather.cloud / 100, 0, 1);
+      const storm = clamp(rainN * 0.90 + windN * 0.35 + cloudN * 0.22, 0, 1);
+
+      const paint = day ? "rgba(25,90,255,0.88)" : "rgba(255,255,255,0.90)";
+      ctx.fillStyle = paint;
+
+      // top “pool band”
+      const bandH = lerp(10, 26, storm);
+      ctx.fillRect(0, 0, W, bandH);
+
+      for (const c of colas) {
+        const wob = Math.sin(c.wob) * 3;
+        const w = Math.max(6, c.w + wob);
+        const len = c.len * (0.85 + 0.25 * micScale);
+
+        // main drip
+        roundRectPath(c.x - w * 0.5, 0, w, len, w * 0.45);
+        ctx.fill();
+
+        // drop bulb
+        ctx.beginPath();
+        ctx.ellipse(c.x, len, w * 0.58, w * 0.74, 0, 0, TAU);
         ctx.fill();
       }
     }
