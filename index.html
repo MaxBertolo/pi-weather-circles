@@ -9,65 +9,67 @@
   <link rel="manifest" href="./manifest.webmanifest">
   <meta name="theme-color" content="#000000">
 
-  <!-- iOS “Add to Home Screen” -->
+  <!-- iOS Add to Home -->
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="MB Art">
   <link rel="apple-touch-icon" href="./icon-192.png">
 
-  <!-- Font più “artistico” (usato anche per la firma MB) -->
+  <!-- Font artistico -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,500;0,700;1,700&display=swap" rel="stylesheet">
 
   <link rel="stylesheet" href="./style.css" />
 </head>
+
 <body>
 
+  <!-- CANVAS -->
   <canvas id="c"></canvas>
 
-  <!-- PICKER -->
+  <!-- ================= PICKER ================= -->
   <div id="modePicker" class="picker">
     <div class="picker-card">
       <div class="picker-title">Scegli il motivo</div>
 
       <div class="picker-grid">
-        <button class="picker-btn" type="button" data-mode="circles">◯ Cerchi</button>
-        <button class="picker-btn" type="button" data-mode="splash">✦ Splash</button>
-        <button class="picker-btn" type="button" data-mode="diamonds">◇ Diamanti</button>
-        <button class="picker-btn" type="button" data-mode="cloud">☁︎ Cloud</button>
-        <button class="picker-btn" type="button" data-mode="cola">⬇︎ Cola</button>
+        <button class="picker-btn" data-mode="circles">◯ Cerchi</button>
+        <button class="picker-btn" data-mode="splash">✦ Splash</button>
+        <button class="picker-btn" data-mode="diamonds">◇ Diamanti</button>
+        <button class="picker-btn" data-mode="cloud">☁︎ Cloud</button>
+        <button class="picker-btn" data-mode="cola">⬇︎ Cola</button>
       </div>
+
       <div class="picker-note">
         Nel quadro: tocca in basso a destra per tornare qui.
       </div>
     </div>
   </div>
 
-  <!-- MENU -->
+  <!-- ================= MENU ================= -->
   <div id="overlay" class="overlay hidden" aria-hidden="true">
     <div class="menu">
+
       <div class="menu-head">
         <div class="menu-title">π Weather Art</div>
-        <button id="btn-exit" class="menu-exit" type="button">EXIT</button>
+        <button id="btn-exit" class="menu-exit">EXIT</button>
       </div>
 
       <div class="menu-grid">
         <div class="card"><div class="icon">📍</div><div id="ov-city" class="big">—</div></div>
         <div class="card"><div class="icon">🕒</div><div id="ov-time" class="big">--:--</div></div>
         <div class="card"><div class="icon">🌡️</div><div id="ov-temp" class="big">--°C</div></div>
-
         <div class="card"><div class="icon">☁️</div><div id="ov-cloud" class="big">--%</div></div>
         <div class="card"><div class="icon">🌧️</div><div id="ov-rain" class="big">--</div></div>
         <div class="card"><div class="icon">💨</div><div id="ov-wind" class="big">--</div></div>
-
         <div class="card"><div class="icon">🌫️</div><div id="ov-fog" class="big">--%</div></div>
       </div>
 
       <div class="menu-section">
-        <!-- Fullscreen controls (useful on desktop/Android; iOS standalone is already browserless) -->
-        <button id="btn-fs" class="btn wide" type="button">⛶ Schermo intero</button>
-        <button id="btn-fs-exit" class="btn wide" type="button">⤢ Esci schermo intero</button>
+
+        <!-- AUDIO -->
+        <button id="btn-audio" class="btn wide">🎶 Audio OFF</button>
 
         <div class="row">
           <span class="icon">🎷</span>
@@ -81,25 +83,27 @@
 
         <div class="row">
           <span class="icon">🔊</span>
-          <input id="audio-volume" type="range" min="0" max="100" value="80" />
+          <input id="audio-volume" type="range" min="0" max="100" value="80">
         </div>
 
         <label class="toggle">
-          <input id="toggle-mic" type="checkbox" />
-          🎤 Microfono (spegne l’audio)
+          <input id="toggle-mic" type="checkbox">
+          🎤 Microfono (spegne audio)
         </label>
 
         <label class="toggle" style="margin-top:10px;">
-          <input id="toggle-night" type="checkbox" />
+          <input id="toggle-night" type="checkbox">
           🌙 Notte forzata
         </label>
+
       </div>
     </div>
   </div>
 
-  <script src="./app.js"></script>
+  <!-- APP -->
+  <script src="./app.js" defer></script>
 
-  <!-- Service Worker: enables PWA behavior -->
+  <!-- Service Worker -->
   <script>
     if ("serviceWorker" in navigator) {
       window.addEventListener("load", () => {
@@ -107,5 +111,6 @@
       });
     }
   </script>
+
 </body>
 </html>
